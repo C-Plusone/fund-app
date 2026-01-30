@@ -230,11 +230,14 @@ async function loadData() {
     
     // [WHAT] 提取近几日真实净值数据用于当日模式显示
     // [WHY] 基金没有分时数据，使用真实历史净值
+    // [NOTE] kline 是时间正序（最旧在前，最新在后），需要取最后几条
     if (kline.length >= 5) {
-      // [WHAT] 取最近5个交易日的真实净值
-      yesterdayData.value = kline.slice(0, 5).reverse()
-    } else if (kline.length > 0) {
-      yesterdayData.value = [...kline].reverse()
+      // [WHAT] 取最近5个交易日的真实净值（不包括今日，因为今日单独显示）
+      yesterdayData.value = kline.slice(-6, -1) // 取倒数第6到倒数第2条（排除最新的今日数据）
+    } else if (kline.length > 1) {
+      yesterdayData.value = kline.slice(0, -1) // 排除最新的今日数据
+    } else {
+      yesterdayData.value = []
     }
     
     await nextTick()
