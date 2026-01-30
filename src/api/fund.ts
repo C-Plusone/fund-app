@@ -133,25 +133,33 @@ export async function fetchFundList(): Promise<FundInfo[]> {
     return fundListCache
   }
 
-  try {
-    // [WHAT] 从本地 JSON 文件加载（由 scripts/fetch-fund-list.mjs 预生成）
-    const response = await fetch('/fund-list.json')
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
+  // [WHAT] 尝试多个路径加载基金列表
+  // [WHY] Capacitor WebView 中路径解析可能不同
+  const paths = [
+    './fund-list.json',           // 相对路径（Capacitor 推荐）
+    '/fund-list.json',            // 绝对路径（Web）
+    'fund-list.json'              // 无前缀
+  ]
+  
+  for (const path of paths) {
+    try {
+      const response = await fetch(path)
+      if (!response.ok) continue
+      
+      const data = await response.json()
+      if (Array.isArray(data) && data.length > 0) {
+        fundListCache = data as FundInfo[]
+        console.log(`[Fund API] 加载基金列表成功 (${path}): ${fundListCache.length} 只`)
+        return fundListCache
+      }
+    } catch {
+      console.log(`[Fund API] 路径 ${path} 加载失败，尝试下一个`)
     }
-    
-    const data = await response.json()
-    
-    // [WHAT] 缓存到内存
-    fundListCache = data as FundInfo[]
-    console.log(`[Fund API] 加载基金列表: ${fundListCache.length} 只`)
-    
-    return fundListCache
-  } catch (error) {
-    console.error('[Fund API] 加载基金列表失败:', error)
-    // [EDGE] 本地文件加载失败时，回退到远程 JSONP 请求
-    return fetchFundListFromRemote()
   }
+  
+  console.error('[Fund API] 所有本地路径加载失败，回退到远程')
+  // [EDGE] 本地文件加载失败时，回退到远程 JSONP 请求
+  return fetchFundListFromRemote()
 }
 
 /**
