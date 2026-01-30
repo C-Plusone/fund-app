@@ -268,18 +268,10 @@ function drawChart() {
   let volumeHeight: number
   let volumeTop: number
   
-  if (showIntradayChart.value) {
-    // 分时图：不显示成交量，图表占满
-    mainHeight = height - 25 // 留出底部X轴空间
-    volumeHeight = 0
-    volumeTop = height
-  } else {
-    // K线图：主图区65%，成交量区25%
-    mainHeight = height * 0.65
-    volumeHeight = height * 0.25
-    const gapHeight = height * 0.05
-    volumeTop = mainHeight + gapHeight
-  }
+  // [WHY] 曲线图布局：图表占满高度，不显示成交量
+  mainHeight = height - 25 // 留出底部X轴空间
+  volumeHeight = 0
+  volumeTop = height
   
   const padding = { top: 15, right: 60, bottom: 25, left: 55 }
   const chartWidth = width - padding.left - padding.right
@@ -296,16 +288,10 @@ function drawChart() {
   let minValue = Math.min(...values)
   let maxValue = Math.max(...values)
   
-  // 分时模式：确保基准线在范围内
-  if (showIntradayChart.value && baseValue.value > 0) {
-    const margin = Math.abs(maxValue - minValue) * 0.15 || baseValue.value * 0.005
-    minValue = Math.min(minValue, baseValue.value) - margin
-    maxValue = Math.max(maxValue, baseValue.value) + margin
-  } else {
-    const margin = (maxValue - minValue) * 0.1 || 0.01
-    minValue -= margin
-    maxValue += margin
-  }
+  // [WHY] 价格范围增加边距，让曲线不贴边
+  const margin = (maxValue - minValue) * 0.1 || 0.01
+  minValue -= margin
+  maxValue += margin
   
   const valueRange = maxValue - minValue || 1
   
@@ -326,18 +312,15 @@ function drawChart() {
     ctx.stroke()
   }
   
-  // [WHY] K线模式才绘制原始Y轴刻度，分时模式在下面单独处理
-  if (!showIntradayChart.value) {
-    // ========== 绘制Y轴刻度（右侧） ==========
-    ctx.fillStyle = colors.textSecondary
-    ctx.font = '10px Arial'
-    ctx.textAlign = 'left'
-    
-    for (let i = 0; i <= 4; i++) {
-      const value = maxValue - valueRange * i / 4
-      const y = padding.top + (mainHeight - padding.top) * i / 4
-      ctx.fillText(value.toFixed(4), width - padding.right + 5, y + 3)
-    }
+  // ========== 绘制Y轴刻度（右侧） ==========
+  ctx.fillStyle = colors.textSecondary
+  ctx.font = '10px Arial'
+  ctx.textAlign = 'left'
+  
+  for (let i = 0; i <= 4; i++) {
+    const value = maxValue - valueRange * i / 4
+    const y = padding.top + (mainHeight - padding.top) * i / 4
+    ctx.fillText(value.toFixed(4), width - padding.right + 5, y + 3)
   }
   
   // ========== 绘制价格线/K线 ==========
@@ -347,159 +330,8 @@ function drawChart() {
   const downColor = colors.downColor
   const lineColor = isUp ? upColor : downColor
   
-  if (showIntradayChart.value) {
-    // ========== 天天基金风格分时图 ==========
-    // [WHY] Y轴显示涨跌幅百分比，中间是0%基准线
-    // [HOW] 计算每个点相对于昨收的涨跌幅
-    
-    const base = baseValue.value || data[0]?.value || 1
-    
-    // 计算涨跌幅范围
-    const changes = data.map(p => ((p.value - base) / base) * 100)
-    const maxChange = Math.max(...changes, 0.1)
-    const minChange = Math.min(...changes, -0.1)
-    const absMaxChange = Math.max(Math.abs(maxChange), Math.abs(minChange))
-    // [WHY] 对称显示，让0%在中间
-    const changeRange = absMaxChange * 1.2
-    
-    // 基准线Y坐标（图表中间）
-    const baseY = padding.top + (mainHeight - padding.top) / 2
-    const chartTop = padding.top
-    const chartBottom = mainHeight
-    
-    // 绘制0%基准线
-    ctx.beginPath()
-    ctx.setLineDash([4, 4])
-    ctx.strokeStyle = '#666'
-    ctx.moveTo(padding.left, baseY)
-    ctx.lineTo(width - padding.right, baseY)
-    ctx.stroke()
-    ctx.setLineDash([])
-    
-    // 绘制上下午分隔线（11:30/13:00位置，约在中间）
-    const midX = padding.left + chartWidth / 2
-    ctx.beginPath()
-    ctx.strokeStyle = colors.borderColor
-    ctx.moveTo(midX, chartTop)
-    ctx.lineTo(midX, chartBottom)
-    ctx.stroke()
-    
-    // [WHY] 计算当前时间在交易日中的位置比例（09:30-15:00，共5.5小时）
-    const now = new Date()
-    const currentMinutes = now.getHours() * 60 + now.getMinutes()
-    const marketStart = 9 * 60 + 30  // 09:30
-    const marketEnd = 15 * 60        // 15:00
-    const totalMarketMinutes = marketEnd - marketStart // 330分钟
-    const elapsedMinutes = Math.max(0, Math.min(currentMinutes - marketStart, totalMarketMinutes))
-    let timeProgress = elapsedMinutes / totalMarketMinutes
-    
-    // [WHY] 非交易时间（早于09:30或晚于15:00），使用数据量来估算位置
-    // [HOW] 如果只有1个数据点，显示在10%位置；多个数据点均匀分布
-    if (timeProgress === 0 || currentMinutes < marketStart || currentMinutes > marketEnd) {
-      // 非交易时间，按数据点数量分配位置
-      timeProgress = Math.min(data.length / 50, 0.15)  // 最多显示15%
-      if (timeProgress < 0.05) timeProgress = 0.05     // 至少显示5%
-    }
-    
-    // [WHY] 最后一个数据点的X位置基于当前时间或数据量
-    const lastX = padding.left + chartWidth * timeProgress
-    
-    // 绘制填充区域（从基准线到曲线，再到当前时间位置）
-    ctx.beginPath()
-    ctx.moveTo(padding.left, baseY)
-    
-    data.forEach((point, i) => {
-      // [WHY] 数据点均匀分布在已过去的时间范围内
-      const x = padding.left + (lastX - padding.left) * (i / Math.max(data.length - 1, 1))
-      const change = ((point.value - base) / base) * 100
-      const y = baseY - (change / changeRange) * ((mainHeight - padding.top) / 2)
-      ctx.lineTo(x, y)
-    })
-    
-    // 闭合到最后一个点的x位置
-    ctx.lineTo(lastX, baseY)
-    ctx.closePath()
-    
-    // 填充渐变（红涨绿跌）
-    const fillGradient = ctx.createLinearGradient(0, chartTop, 0, chartBottom)
-    if (isUp) {
-      // 上涨：红色填充在上方
-      fillGradient.addColorStop(0, 'rgba(246, 70, 93, 0.2)')
-      fillGradient.addColorStop(0.5, 'rgba(246, 70, 93, 0.05)')
-      fillGradient.addColorStop(1, 'rgba(246, 70, 93, 0)')
-    } else {
-      // 下跌：绿色填充在下方
-      fillGradient.addColorStop(0, 'rgba(14, 203, 129, 0)')
-      fillGradient.addColorStop(0.5, 'rgba(14, 203, 129, 0.05)')
-      fillGradient.addColorStop(1, 'rgba(14, 203, 129, 0.2)')
-    }
-    ctx.fillStyle = fillGradient
-    ctx.fill()
-    
-    // 绘制走势线
-    ctx.beginPath()
-    data.forEach((point, i) => {
-      const x = padding.left + (lastX - padding.left) * (i / Math.max(data.length - 1, 1))
-      const change = ((point.value - base) / base) * 100
-      const y = baseY - (change / changeRange) * ((mainHeight - padding.top) / 2)
-      if (i === 0) ctx.moveTo(x, y)
-      else ctx.lineTo(x, y)
-    })
-    ctx.strokeStyle = lineColor
-    ctx.lineWidth = 1.5
-    ctx.stroke()
-    
-    // 绘制Y轴涨跌幅标签（左右两侧）
-    ctx.font = '10px Arial'
-    ctx.textAlign = 'left'
-    
-    // 上方最大涨幅
-    ctx.fillStyle = upColor
-    ctx.fillText(`+${changeRange.toFixed(2)}%`, 5, chartTop + 12)
-    // 中间0%
-    ctx.fillStyle = colors.textSecondary
-    ctx.fillText('0%', 5, baseY + 4)
-    // 下方最大跌幅
-    ctx.fillStyle = downColor
-    ctx.fillText(`-${changeRange.toFixed(2)}%`, 5, chartBottom - 5)
-    
-    // 右侧价格
-    ctx.textAlign = 'right'
-    ctx.fillStyle = colors.textSecondary
-    ctx.fillText((base * (1 + changeRange / 100)).toFixed(4), width - 5, chartTop + 12)
-    ctx.fillText(base.toFixed(4), width - 5, baseY + 4)
-    ctx.fillText((base * (1 - changeRange / 100)).toFixed(4), width - 5, chartBottom - 5)
-    
-    // X轴时间标签（09:30, 11:30/13:00, 15:00）
-    ctx.textAlign = 'center'
-    ctx.fillStyle = colors.textSecondary
-    ctx.fillText('09:30', padding.left, height - 5)
-    ctx.fillText('11:30/13:00', midX, height - 5)
-    ctx.fillText('15:00', width - padding.right, height - 5)
-    
-    // 最新点动画
-    if (data.length > 0) {
-      const lastPoint = data[data.length - 1]!
-      const lastChange = ((lastPoint.value - base) / base) * 100
-      const lastY = baseY - (lastChange / changeRange) * ((mainHeight - padding.top) / 2)
-      
-      // 脉冲点
-      const pulseSize = 3 + Math.sin(Date.now() / 200) * 1.5
-      ctx.beginPath()
-      ctx.arc(lastX, lastY, pulseSize, 0, Math.PI * 2)
-      ctx.fillStyle = lineColor
-      ctx.fill()
-      
-      // 外圈光晕
-      ctx.beginPath()
-      ctx.arc(lastX, lastY, pulseSize + 3, 0, Math.PI * 2)
-      ctx.strokeStyle = lineColor
-      ctx.lineWidth = 1
-      ctx.globalAlpha = 0.4
-      ctx.stroke()
-      ctx.globalAlpha = 1
-    }
-  } else {
+  // [WHY] 统一使用曲线图样式，当日和其他周期一致
+  {
     // [WHY] 曲线图模式：绘制平滑走势曲线
     // [WHAT] 用折线连接每日净值，带渐变填充
     
@@ -578,55 +410,29 @@ function drawChart() {
     }
   }
   
-  // ========== 绘制成交量柱状图（仅K线模式） ==========
-  // [WHY] 分时图不显示成交量，只显示走势线
-  if (!showIntradayChart.value) {
-    const volumeChartHeight = volumeHeight - 10
-    
-    // [WHY] 成交量柱与K线对齐，紧密排列
-    const volGap = 1
-    const volBarWidth = Math.max(3, Math.min(12, (chartWidth - volGap * data.length) / data.length))
-    
-    data.forEach((point, i) => {
-      const x = padding.left + (chartWidth / data.length) * i + volBarWidth / 2 + volGap / 2
-      const vol = (point as any).volume || 0
-      const volHeight = Math.max(1, (vol / maxVolume) * volumeChartHeight * 0.85)
-      
-      const prevValue = i > 0 ? data[i - 1]!.value : point.value
-      const isBarUp = point.value >= prevValue
-      
-      // [WHY] 红涨绿跌
-      ctx.fillStyle = isBarUp ? 'rgba(246, 70, 93, 0.7)' : 'rgba(14, 203, 129, 0.7)'
-      ctx.fillRect(x - volBarWidth / 2, volumeTop + volumeChartHeight - volHeight, volBarWidth, volHeight)
-    })
-    
-    // 成交量Y轴
-    ctx.fillStyle = colors.textSecondary
-    ctx.font = '9px Arial'
-    ctx.textAlign = 'left'
-    ctx.fillText(formatVolume(maxVolume), width - padding.right + 5, volumeTop + 10)
-    ctx.fillText('0', width - padding.right + 5, volumeTop + volumeChartHeight)
-  }
+  // ========== 绘制X轴时间标签 ==========
+  ctx.fillStyle = colors.textSecondary
+  ctx.font = '10px Arial'
+  ctx.textAlign = 'center'
   
-  // ========== 绘制X轴时间标签（仅K线模式） ==========
-  // [WHY] 分时图已经在上面绘制了固定时间标签（09:30, 11:30/13:00, 15:00）
-  if (!showIntradayChart.value) {
-    ctx.fillStyle = colors.textSecondary
-    ctx.font = '10px Arial'
-    ctx.textAlign = 'center'
+  const labelCount = Math.min(5, data.length)
+  for (let i = 0; i < labelCount; i++) {
+    const idx = Math.floor((data.length - 1) * i / Math.max(labelCount - 1, 1))
+    const point = data[idx]
+    if (!point) continue
+    const x = padding.left + (chartWidth / Math.max(data.length - 1, 1)) * idx
     
-    const labelCount = Math.min(5, data.length)
-    for (let i = 0; i < labelCount; i++) {
-      const idx = Math.floor((data.length - 1) * i / Math.max(labelCount - 1, 1))
-      const point = data[idx]
-      if (!point) continue
-      const x = padding.left + (chartWidth / Math.max(data.length - 1, 1)) * idx
-      
-      // K线模式：显示 MM-DD
+    // [WHAT] 显示时间标签，当日显示时:分，其他显示月-日
+    let label: string
+    if (isIntradayMode.value && point.time.includes(':')) {
+      // 当日模式：显示 HH:MM
+      label = point.time.slice(0, 5)
+    } else {
+      // 其他模式：显示 MM-DD
       const parts = point.time.split('-')
-      const label = parts.length >= 3 ? `${parts[1]}-${parts[2]}` : point.time.slice(-5)
-      ctx.fillText(label, x, height - 5)
+      label = parts.length >= 3 ? `${parts[1]}-${parts[2]}` : point.time.slice(-5)
     }
+    ctx.fillText(label, x, height - 5)
   }
 }
 
