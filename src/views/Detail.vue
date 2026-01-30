@@ -3,7 +3,7 @@
 // [WHAT] 深色主题、专业K线图、实时价格面板、成交量柱状图
 // [HOW] Canvas绘制专业图表，秒级数据更新
 
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { useThemeStore } from '@/stores/theme'
@@ -41,6 +41,21 @@ const low24h = ref(0)
 onMounted(async () => {
   await loadFundData()
   startAutoRefresh()
+})
+
+// [WHY] 监听路由参数变化，同一组件内导航时重新加载数据
+watch(fundCode, async (newCode, oldCode) => {
+  if (newCode && newCode !== oldCode) {
+    // [WHAT] 清空旧数据
+    fundInfo.value = null
+    stockHoldings.value = []
+    periodReturns.value = []
+    similarFunds.value = []
+    isLoading.value = true
+    
+    // [WHAT] 重新加载数据
+    await loadFundData()
+  }
 })
 
 onUnmounted(() => {
