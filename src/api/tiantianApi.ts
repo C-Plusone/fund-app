@@ -1126,13 +1126,17 @@ export async function fetchSectorFunds(): Promise<SectorInfo[]> {
     
     if (!data?.data?.diff) return []
     
-    const sectors: SectorInfo[] = data.data.diff.slice(0, 6).map((item: any) => ({
-      code: item.f12 || '',  // 板块代码
-      name: item.f14 || '',
-      streak: item.f3 > 0 ? '连涨1天' : '',
-      dayReturn: item.f3 || 0,
-      funds: [] // 先留空，后续可扩展
-    }))
+    const sectors: SectorInfo[] = data.data.diff.slice(0, 6).map((item: any) => {
+      // [WHAT] 确保 dayReturn 是数字类型
+      const dayReturn = parseFloat(item.f3) || 0
+      return {
+        code: item.f12 || '',  // 板块代码
+        name: item.f14 || '',
+        streak: dayReturn > 0 ? '连涨1天' : (dayReturn < 0 ? '连跌1天' : ''),
+        dayReturn,
+        funds: [] // 先留空，后续可扩展
+      }
+    })
     
     cache.set(cacheKey, sectors, CACHE_TTL.MARKET_INDEX)
     return sectors

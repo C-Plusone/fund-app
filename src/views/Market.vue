@@ -383,8 +383,8 @@ onMounted(() => {
           <div class="sector-popup-info">
             <div class="info-row">
               <span class="label">今日涨幅</span>
-              <span class="value" :class="(selectedSector.dayReturn || 0) >= 0 ? 'up' : 'down'">
-                {{ (selectedSector.dayReturn || 0) >= 0 ? '+' : '' }}{{ (selectedSector.dayReturn || 0).toFixed(2) }}%
+              <span class="value" :class="getChangeStatus(selectedSector.dayReturn)">
+                {{ formatPercent(selectedSector.dayReturn) }}
               </span>
             </div>
             <div class="info-row" v-if="selectedSector.streak">
