@@ -30,3 +30,8 @@ app.mount('#app')
 import { useThemeStore } from './stores/theme'
 const themeStore = useThemeStore()
 themeStore.initTheme()
+
+// [WHAT] 初始化移动端默认缓存
+// [WHY] 移动端 WebView 对 JSONP 有限制，首次运行需要预设数据
+import { initMobileDefaultCache } from './api/tiantianApi'
+initMobileDefaultCache()

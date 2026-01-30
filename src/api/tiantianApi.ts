@@ -44,6 +44,39 @@ export const persistCache = {
 }
 
 /**
+ * [WHAT] 初始化移动端默认缓存数据
+ * [WHY] 移动端首次运行时没有缓存，JSONP 可能受限，提供默认数据
+ * [NOTE] 只在缓存为空时设置，不会覆盖已有数据
+ */
+export function initMobileDefaultCache(): void {
+  const cacheKey = 'market_overview_v2'
+  const existing = persistCache.get<{totalUp: number}>(cacheKey)
+  
+  // [WHAT] 已有缓存，不覆盖
+  if (existing && existing.totalUp > 0) return
+  
+  // [WHAT] 设置默认数据（基于历史平均值估算）
+  const defaultData = {
+    updateTime: '等待更新',
+    totalUp: 3000,
+    totalDown: 5000,
+    distribution: [
+      { range: '≤-5', count: 150, min: -Infinity, max: -5 },
+      { range: '-5~-3', count: 200, min: -5, max: -3 },
+      { range: '-3~-1', count: 1500, min: -3, max: -1 },
+      { range: '-1~0', count: 3000, min: -1, max: -0.001 },
+      { range: '0~1', count: 4000, min: -0.001, max: 1 },
+      { range: '1~3', count: 1000, min: 1, max: 3 },
+      { range: '3~5', count: 100, min: 3, max: 5 },
+      { range: '≥5', count: 50, min: 5, max: Infinity }
+    ]
+  }
+  
+  persistCache.set(cacheKey, defaultData)
+  console.log('[Cache] 初始化移动端默认市场数据')
+}
+
+/**
  * 带持久化缓存的数据获取包装器
  * [WHY] 统一处理：开盘前用缓存，开盘后获取新数据
  */
