@@ -383,17 +383,17 @@ onMounted(() => {
           <div class="sector-popup-info">
             <div class="info-row">
               <span class="label">今日涨幅</span>
-              <span class="value" :class="(selectedSector.change || 0) >= 0 ? 'up' : 'down'">
-                {{ (selectedSector.change || 0) >= 0 ? '+' : '' }}{{ (selectedSector.change || 0).toFixed(2) }}%
+              <span class="value" :class="(selectedSector.dayReturn || 0) >= 0 ? 'up' : 'down'">
+                {{ (selectedSector.dayReturn || 0) >= 0 ? '+' : '' }}{{ (selectedSector.dayReturn || 0).toFixed(2) }}%
               </span>
             </div>
             <div class="info-row" v-if="selectedSector.streak">
               <span class="label">连续表现</span>
               <span class="value streak">{{ selectedSector.streak }}</span>
             </div>
-            <div class="info-row" v-if="selectedSector.leadStock">
-              <span class="label">领涨股</span>
-              <span class="value">{{ selectedSector.leadStock }}</span>
+            <div class="info-row" v-if="selectedSector.funds && selectedSector.funds.length > 0">
+              <span class="label">领涨基金</span>
+              <span class="value">{{ selectedSector.funds[0].name }}</span>
             </div>
           </div>
           
