@@ -137,8 +137,21 @@ export const useHoldingStore = defineStore('holding', () => {
     if (index === -1) return
 
     const holding = holdings.value[index]
-    const currentValue = parseFloat(data.gsz) || 0
+    const estimateValue = parseFloat(data.gsz) || 0
     const lastValue = parseFloat(data.dwjz) || 0
+    
+    // [EDGE] 如果估值为0（非交易时间），使用昨收净值计算市值
+    const currentValue = estimateValue > 0 ? estimateValue : lastValue
+    
+    // [EDGE] 如果净值都无效，跳过计算
+    if (currentValue <= 0) {
+      holdings.value[index] = {
+        ...holding,
+        name: data.name || holding.name,
+        loading: false
+      }
+      return
+    }
     
     // [WHAT] 计算市值
     const marketValue = holding.shares * currentValue
