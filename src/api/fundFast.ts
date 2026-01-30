@@ -295,6 +295,12 @@ export async function calculatePeriodReturns(code: string): Promise<PeriodReturn
   if (history.length < 2) return []
   
   const latest = history[0]!
+  
+  // [EDGE] 如果最新净值为0或无效，跳过计算
+  if (!latest || latest.netValue <= 0) {
+    return []
+  }
+  
   const results: PeriodReturn[] = []
   
   const periods = [
