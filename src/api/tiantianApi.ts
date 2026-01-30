@@ -781,7 +781,13 @@ export async function fetchMarketOverview(): Promise<MarketOverview> {
           let totalDown = 0
           
           if (rankData?.datas && Array.isArray(rankData.datas)) {
-            rankData.datas.forEach((row: string) => {
+            // [DEBUG] 打印第一条数据看格式
+            if (rankData.datas.length > 0) {
+              console.log('[MarketOverview] 数据示例:', rankData.datas[0])
+              console.log('[MarketOverview] 数据总数:', rankData.datas.length)
+            }
+            
+            rankData.datas.forEach((row: string, idx: number) => {
               const cols = row.split(',')
               // [WHAT] 天天基金 rankhandler 数据格式：
               // 0:基金代码, 1:基金名称, 2:字母缩写, 3:日期, 4:单位净值, 5:累计净值, 
@@ -791,8 +797,12 @@ export async function fetchMarketOverview(): Promise<MarketOverview> {
               
               // [EDGE] 如果第6列不是有效数字，尝试其他可能的列
               if (isNaN(change) || cols[6] === '') {
-                // 尝试第4列或第5列（不同类型基金格式可能不同）
                 change = parseFloat(cols[4] ?? '0') || parseFloat(cols[5] ?? '0') || 0
+              }
+              
+              // [DEBUG] 打印负数数据
+              if (change < 0 && idx < 10) {
+                console.log('[MarketOverview] 下跌基金:', cols[0], cols[1], 'change:', change)
               }
               
               if (change > 0) totalUp++
@@ -806,6 +816,8 @@ export async function fetchMarketOverview(): Promise<MarketOverview> {
                 }
               }
             })
+            
+            console.log('[MarketOverview] 统计结果: 上涨', totalUp, '下跌', totalDown)
           }
           
           
