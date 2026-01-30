@@ -29,13 +29,13 @@
 
 ### 下载安装
 
-前往 [Releases](https://github.com/xiriovo-max/fund-app/releases) 下载最新版 APK 安装。
+前往 [Releases](https://github.com/xiriovo/fund-app/releases) 下载最新版 APK 安装。
 
 ### 本地开发
 
 ```bash
 # 克隆项目
-git clone https://github.com/xiriovo-max/fund-app.git
+git clone https://github.com/xiriovo/fund-app.git
 cd fund-app
 
 # 安装依赖

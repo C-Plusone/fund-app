@@ -44,7 +44,7 @@ export default defineConfig({
     ],
     
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/xiriovo-max/fund-app' }
+      { icon: 'github', link: 'https://github.com/xiriovo/fund-app' }
     ],
     
     footer: {

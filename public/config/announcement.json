@@ -13,9 +13,9 @@
       "endTime": "2026-12-31T23:59:59Z"
     }
   ],
-  "updateUrl": "https://github.com/xiriovo-max/fund-app/releases/latest",
+  "updateUrl": "https://github.com/xiriovo/fund-app/releases/latest",
   "links": {
-    "github": "https://github.com/xiriovo-max/fund-app",
-    "feedback": "https://github.com/xiriovo-max/fund-app/issues"
+    "github": "https://github.com/xiriovo/fund-app",
+    "feedback": "https://github.com/xiriovo/fund-app/issues"
   }
 }

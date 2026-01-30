@@ -9,7 +9,7 @@
     <h3>v1.0.0</h3>
     <span class="release-date">2026-01-31</span>
   </div>
-  <a href="https://github.com/xiriovo-max/fund-app/releases/latest/download/app-release.apk" class="download-btn">
+  <a href="https://github.com/xiriovo/fund-app/releases/latest/download/app-release.apk" class="download-btn">
     下载 APK (约 5MB)
   </a>
 </div>
@@ -29,7 +29,7 @@
 
 | 版本 | 发布日期 | 下载 |
 |------|----------|------|
-| v1.0.0 | 2026-01-31 | [下载](https://github.com/xiriovo-max/fund-app/releases/tag/v1.0.0) |
+| v1.0.0 | 2026-01-31 | [下载](https://github.com/xiriovo/fund-app/releases/tag/v1.0.0) |
 
 ## 自行构建
 
@@ -37,7 +37,7 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/xiriovo-max/fund-app.git
+git clone https://github.com/xiriovo/fund-app.git
 cd fund-app
 
 # 安装依赖

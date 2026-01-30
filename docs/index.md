@@ -14,7 +14,7 @@ hero:
       link: /download
     - theme: alt
       text: GitHub
-      link: https://github.com/xiriovo-max/fund-app
+      link: https://github.com/xiriovo/fund-app
 
 features:
   - icon: ⚡
@@ -57,5 +57,5 @@ features:
 
 ## 联系我们
 
-- GitHub Issues: [提交问题](https://github.com/xiriovo-max/fund-app/issues)
-- 开源协议: [MIT License](https://github.com/xiriovo-max/fund-app/blob/main/LICENSE)
+- GitHub Issues: [提交问题](https://github.com/xiriovo/fund-app/issues)
+- 开源协议: [MIT License](https://github.com/xiriovo/fund-app/blob/main/LICENSE)

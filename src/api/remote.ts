@@ -7,11 +7,11 @@
 
 // [WHAT] 远程配置文件 URL，部署后替换为实际地址
 // [HOW] 本地开发时使用相对路径，生产环境使用完整 URL
-// [NOTE] 部署后将 xiriovo-max 替换为实际 GitHub 用户名
+// [NOTE] 部署后将 xiriovo 替换为实际 GitHub 用户名
 const isDev = import.meta.env.DEV
 const REMOTE_CONFIG_URL = isDev 
   ? '/config/announcement.json'
-  : 'https://xiriovo-max.github.io/fund-app/config/announcement.json'
+  : 'https://xiriovo.github.io/fund-app/config/announcement.json'
 
 /**
  * 公告类型
