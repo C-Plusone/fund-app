@@ -62,9 +62,8 @@ const periods = [
 const isIntradayMode = computed(() => activePeriod.value === '1d')
 
 // [WHAT] 只有当日模式且有实时数据时才显示分时图样式
-// [WHY] 基金没有真实分时数据，始终使用 K 线数据显示
-// [NOTE] 不再使用特殊的分时图模式，所有周期统一使用曲线图
-const showIntradayChart = computed(() => false)
+// [WHY] 当日模式显示昨日数据 + 今日估值
+const showIntradayChart = computed(() => isIntradayMode.value)
 
 // [WHAT] 过滤数据
 const filteredData = computed(() => {
@@ -72,50 +71,50 @@ const filteredData = computed(() => {
   const now = new Date()
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   
-  // [WHY] 当日分时模式
+  // [WHY] 当日模式：显示近3天数据（昨天完整 + 今日估值）
   if (showIntradayChart.value) {
-    // 如果有实时数据，使用实时数据
-    if (intradayData.value.length > 0) {
-      return intradayData.value.map(p => ({
-        time: p.time,
-        value: p.value,
-        change: baseValue.value > 0 ? ((p.value - baseValue.value) / baseValue.value) * 100 : 0,
-        volume: p.volume
-      }))
-    }
-    
-    // [WHY] 没有实时数据时，检查是否有有效的估值
-    if (props.realtimeValue > 0) {
-      const base = baseValue.value || props.lastClose || props.realtimeValue
-      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-      return [{
-        time: timeStr,
-        value: props.realtimeValue,
-        change: base > 0 ? ((props.realtimeValue - base) / base) * 100 : 0,
-        volume: 50
-      }]
-    }
-    
-    // [WHY] 估值也没有时，使用最近5天的K线数据作为替代显示
-    console.log('[当日模式] 无实时数据，使用K线数据替代')
-    const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000)
-    const fallbackData = chartData.value
-      .filter(item => new Date(item.time) >= fiveDaysAgo)
+    // [WHAT] 取最近3天的历史数据作为基础
+    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
+    let data = chartData.value
+      .filter(item => new Date(item.time) >= threeDaysAgo)
       .map((item, i) => ({ 
         ...item, 
         volume: 50 + Math.abs(item.change) * 30 + (i % 5) * 10
       }))
     
-    // [WHY] 如果连K线数据都没有，返回一个占位数据防止图表空白
-    if (fallbackData.length === 0) {
+    // [WHAT] 如果有今日估值，添加或更新今日数据点
+    if (props.realtimeValue > 0) {
+      const lastItem = data[data.length - 1]
+      if (lastItem && lastItem.time === today) {
+        // 更新今日数据
+        data = [...data.slice(0, -1), {
+          ...lastItem,
+          value: props.realtimeValue,
+          change: props.realtimeChange,
+          volume: lastItem.volume
+        }]
+      } else {
+        // 添加今日数据点
+        data = [...data, {
+          time: today,
+          value: props.realtimeValue,
+          change: props.realtimeChange,
+          volume: 50
+        }]
+      }
+    }
+    
+    // [EDGE] 如果没有数据，返回占位数据
+    if (data.length === 0) {
       return [{
         time: today,
-        value: 1,
+        value: props.lastClose || 1,
         change: 0,
         volume: 50
       }]
     }
-    return fallbackData
+    
+    return data
   }
   
   // [WHY] 其他情况统一使用K线数据
@@ -330,14 +329,91 @@ function drawChart() {
   const downColor = colors.downColor
   const lineColor = isUp ? upColor : downColor
   
-  // [WHY] 所有模式统一使用标准曲线图
+  // [WHY] 计算整体涨跌
   const chartBottom = mainHeight
   const firstValue = data[0]?.value || 0
   const lastValue = data[data.length - 1]?.value || 0
   const isOverallUp = lastValue >= firstValue
   
-  // ========== 统一曲线绘制 ==========
-  {
+  // [WHAT] 获取今日日期
+  const now = new Date()
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  
+  // ========== 当日模式：昨日曲线 + 今日点 ==========
+  if (isIntradayMode.value && data.length > 1) {
+    // [WHAT] 分离历史数据和今日数据
+    const todayIndex = data.findIndex(d => d.time === todayStr)
+    const hasToday = todayIndex >= 0
+    const historyData = hasToday ? data.slice(0, todayIndex) : data.slice(0, -1)
+    const todayData = hasToday ? data[todayIndex] : data[data.length - 1]
+    
+    // [WHAT] 绘制历史数据曲线（灰色虚线）
+    if (historyData.length > 0) {
+      ctx.beginPath()
+      ctx.setLineDash([4, 4])
+      historyData.forEach((point, i) => {
+        const x = padding.left + (chartWidth / Math.max(data.length - 1, 1)) * i
+        const y = padding.top + (mainHeight - padding.top) * (1 - (point.value - minValue) / valueRange)
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      })
+      ctx.strokeStyle = colors.textSecondary
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+      ctx.setLineDash([])
+      
+      // [WHAT] 绘制历史数据点
+      historyData.forEach((point, i) => {
+        const x = padding.left + (chartWidth / Math.max(data.length - 1, 1)) * i
+        const y = padding.top + (mainHeight - padding.top) * (1 - (point.value - minValue) / valueRange)
+        ctx.beginPath()
+        ctx.arc(x, y, 3, 0, Math.PI * 2)
+        ctx.fillStyle = colors.textSecondary
+        ctx.fill()
+      })
+    }
+    
+    // [WHAT] 连接最后一个历史点到今日点
+    if (historyData.length > 0 && todayData) {
+      const lastHistoryIdx = historyData.length - 1
+      const lastHistoryX = padding.left + (chartWidth / Math.max(data.length - 1, 1)) * lastHistoryIdx
+      const lastHistoryY = padding.top + (mainHeight - padding.top) * (1 - (historyData[lastHistoryIdx]!.value - minValue) / valueRange)
+      
+      const todayIdx = hasToday ? todayIndex : data.length - 1
+      const todayX = padding.left + (chartWidth / Math.max(data.length - 1, 1)) * todayIdx
+      const todayY = padding.top + (mainHeight - padding.top) * (1 - (todayData.value - minValue) / valueRange)
+      
+      // 连接线
+      ctx.beginPath()
+      ctx.moveTo(lastHistoryX, lastHistoryY)
+      ctx.lineTo(todayX, todayY)
+      ctx.strokeStyle = isOverallUp ? upColor : downColor
+      ctx.lineWidth = 2
+      ctx.stroke()
+      
+      // 今日点动画
+      const pulseSize = 4 + Math.sin(Date.now() / 200) * 2
+      ctx.beginPath()
+      ctx.arc(todayX, todayY, pulseSize, 0, Math.PI * 2)
+      ctx.fillStyle = isOverallUp ? upColor : downColor
+      ctx.fill()
+      
+      ctx.beginPath()
+      ctx.arc(todayX, todayY, pulseSize + 4, 0, Math.PI * 2)
+      ctx.strokeStyle = isOverallUp ? upColor : downColor
+      ctx.lineWidth = 1
+      ctx.globalAlpha = 0.4
+      ctx.stroke()
+      ctx.globalAlpha = 1
+      
+      // 今日净值标签
+      ctx.fillStyle = isOverallUp ? upColor : downColor
+      ctx.font = '10px Arial'
+      ctx.textAlign = 'center'
+      ctx.fillText(todayData.value.toFixed(4), todayX, todayY - 12)
+    }
+  } else {
+    // ========== 其他模式：标准曲线图 ==========
     
     // 绘制填充区域（曲线下方到底部）
     ctx.beginPath()
