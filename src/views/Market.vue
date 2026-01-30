@@ -75,7 +75,24 @@ async function loadOverview() {
       cachedOverview.value = data // 更新缓存
     }
   } catch {
-    // [EDGE] 失败时保持使用缓存数据
+    // [EDGE] 失败时使用默认数据
+    if (!overview.value) {
+      overview.value = {
+        updateTime: '--',
+        totalUp: 0,
+        totalDown: 0,
+        distribution: [
+          { range: '≤-5', count: 0, min: -Infinity, max: -5 },
+          { range: '-5~-3', count: 0, min: -5, max: -3 },
+          { range: '-3~-1', count: 0, min: -3, max: -1 },
+          { range: '-1~0', count: 0, min: -1, max: 0 },
+          { range: '0~1', count: 0, min: 0, max: 1 },
+          { range: '1~3', count: 0, min: 1, max: 3 },
+          { range: '3~5', count: 0, min: 3, max: 5 },
+          { range: '≥5', count: 0, min: 5, max: Infinity }
+        ]
+      }
+    }
   } finally {
     overviewLoading.value = false
   }

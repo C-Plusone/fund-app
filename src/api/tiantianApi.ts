@@ -709,9 +709,9 @@ export async function fetchMarketOverview(): Promise<MarketOverview> {
           }
           
           cache.set(cacheKey, result, CACHE_TTL.MARKET_INDEX)
-          resolve(result)
+          safeResolve(result)
         } catch {
-          resolve({
+          safeResolve({
             updateTime: '--',
             totalUp: 0,
             totalDown: 0,
@@ -723,7 +723,7 @@ export async function fetchMarketOverview(): Promise<MarketOverview> {
     
     script.onerror = () => {
       cleanup()
-      resolve({
+      safeResolve({
         updateTime: '--',
         totalUp: 0,
         totalDown: 0,
@@ -736,10 +736,11 @@ export async function fetchMarketOverview(): Promise<MarketOverview> {
       if (s) document.body.removeChild(s)
     }
     
-    // [WHAT] 超时处理
-    setTimeout(() => {
-      const s = document.getElementById(scriptId)
-      if (s) {
+    // [WHAT] 超时处理 - 无论如何都要 resolve
+    let resolved = false
+    const timeoutId = setTimeout(() => {
+      if (!resolved) {
+        resolved = true
         cleanup()
         resolve({
           updateTime: '--',
@@ -748,7 +749,16 @@ export async function fetchMarketOverview(): Promise<MarketOverview> {
           distribution: createRanges()
         })
       }
-    }, 15000)
+    }, 8000) // 缩短超时时间
+    
+    // [WHAT] 包装 resolve 确保只调用一次
+    const safeResolve = (data: MarketOverview) => {
+      if (!resolved) {
+        resolved = true
+        clearTimeout(timeoutId)
+        resolve(data)
+      }
+    }
     
     // [WHAT] 获取基金涨跌数据（场外开放式基金）
     script.src = `https://fund.eastmoney.com/data/rankhandler.aspx?op=ph&dt=kf&ft=all&rs=&gs=0&sc=rzdf&st=desc&pi=1&pn=5000&dx=1&v=${Date.now()}`
