@@ -6,6 +6,7 @@
 import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
 import { fetchSimpleKLineData, calculatePeriodReturns, clearFundCache, type SimpleKLineData, type PeriodReturn } from '@/api/fundFast'
 import { useThemeStore } from '@/stores/theme'
+import { isTradingTime } from '@/api/tiantianApi'
 
 const props = defineProps<{
   fundCode: string
@@ -318,9 +319,14 @@ function drawChart() {
   const now = new Date()
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   
-  // ========== 当日模式：只显示历史曲线，等待开盘 ==========
-  if (isIntradayMode.value && data.length > 0) {
-    // [WHAT] 绘制历史数据曲线（灰色虚线）
+  // ========== 当日模式特殊处理 ==========
+  // [WHY] 非交易时间显示完整曲线，交易时间无数据时显示"等待开盘"
+  const isTrading = isTradingTime()
+  const hasRealtimeData = props.realtimeValue > 0
+  const showWaitingState = isIntradayMode.value && isTrading && !hasRealtimeData
+  
+  if (isIntradayMode.value && data.length > 0 && showWaitingState) {
+    // [WHAT] 交易时间但无实时数据：显示历史曲线 + 等待开盘
     ctx.beginPath()
     ctx.setLineDash([4, 4])
     data.forEach((point, i) => {
