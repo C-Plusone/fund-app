@@ -1597,31 +1597,32 @@ export async function fetchFundAnnouncements(fundCode: string, _pageSize = 10): 
 
 /**
  * 默认公告数据
+ * [WHAT] 免责声明和风险提示
  */
-function getDefaultAnnouncements(fundCode: string): FundAnnouncement[] {
+function getDefaultAnnouncements(_fundCode: string): FundAnnouncement[] {
   const now = new Date()
   const formatDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   
   return [
     {
       id: '1',
-      title: `${fundCode}基金2024年第4季度报告`,
-      date: formatDate(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)),
-      type: '定期报告',
+      title: '投资有风险，理财需谨慎',
+      date: formatDate(now),
+      type: '其他公告',
       url: ''
     },
     {
       id: '2', 
-      title: `关于${fundCode}基金分红的公告`,
-      date: formatDate(new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000)),
-      type: '分红公告',
+      title: '数据刷新有延迟，仅供学习和参考',
+      date: formatDate(now),
+      type: '其他公告',
       url: ''
     },
     {
       id: '3',
-      title: `${fundCode}基金2024年半年度报告`,
-      date: formatDate(new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)),
-      type: '定期报告',
+      title: '下载后请在24小时内删除',
+      date: formatDate(now),
+      type: '其他公告',
       url: ''
     }
   ]
