@@ -289,21 +289,30 @@ export async function fetchPeriodReturnExt(code: string): Promise<PeriodReturnEx
         // [WHAT] 从全局变量获取数据
         const periodData = (window as any).Data_rateInSimilarPers498 || []
         
-        const periodLabels: Record<string, string> = {
-          'Z': '近1周', 'Y': '近1月', '3Y': '近3月', '6Y': '近6月',
-          '1N': '近1年', '2N': '近2年', '3N': '近3年', '5N': '近5年',
-          'JN': '今年来', 'LN': '成立来'
+        // [WHAT] API原始key -> 标准化period -> 显示标签
+        const periodConfig: Record<string, { period: string, label: string }> = {
+          'Z': { period: '1w', label: '近1周' },
+          'Y': { period: '1m', label: '近1月' },
+          '3Y': { period: '3m', label: '近3月' },
+          '6Y': { period: '6m', label: '近6月' },
+          '1N': { period: '1y', label: '近1年' },
+          '2N': { period: '2y', label: '近2年' },
+          '3N': { period: '3y', label: '近3年' },
+          '5N': { period: '5y', label: '近5年' },
+          'JN': { period: 'ytd', label: '今年来' },
+          'LN': { period: 'all', label: '成立来' }
         }
         
         const result: PeriodReturnExt[] = []
         
-        // [WHAT] 解析阶段涨幅数据
+        // [WHAT] 解析阶段涨幅数据，转换为标准化格式
         if (Array.isArray(periodData)) {
           periodData.forEach((item: any) => {
-            if (item.title && periodLabels[item.title]) {
+            const config = periodConfig[item.title]
+            if (config) {
               result.push({
-                period: item.title as string,
-                label: periodLabels[item.title] as string,
+                period: config.period,
+                label: config.label,
                 fundReturn: parseFloat(item.syl) || 0,
                 avgReturn: parseFloat(item.avg) || 0,
                 hs300Return: parseFloat(item.hs300) || 0,
