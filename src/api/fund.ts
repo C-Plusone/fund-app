@@ -213,7 +213,7 @@ async function fetchFundListFromRemote(): Promise<FundInfo[]> {
 /**
  * 搜索基金（本地过滤）
  * [WHY] 全量列表已缓存，本地搜索比服务端快
- * [WHAT] 支持按代码、名称、拼音搜索
+ * [WHAT] 支持按代码、名称、拼音搜索，支持关键词拆分匹配
  * @param keyword 搜索关键词
  * @param limit 返回数量限制
  */
@@ -226,15 +226,60 @@ export async function searchFund(
     return []
   }
   const kw = keyword.toLowerCase().trim()
-  // [HOW] 同时匹配代码、名称、拼音，取前 limit 条
-  return list
-    .filter(
-      (item) =>
-        item.code.includes(kw) ||
-        item.name.toLowerCase().includes(kw) ||
-        item.pinyin.toLowerCase().includes(kw)
-    )
-    .slice(0, limit)
+  
+  // [WHAT] 先尝试完整匹配
+  let results = list.filter(
+    (item) =>
+      item.code.includes(kw) ||
+      item.name.toLowerCase().includes(kw) ||
+      item.pinyin.toLowerCase().includes(kw)
+  )
+  
+  // [WHY] 如果完整匹配无结果，尝试拆分关键词匹配
+  // [HOW] 将搜索词拆分成单个字，匹配包含任意关键字的基金
+  if (results.length === 0 && kw.length >= 2) {
+    // [WHAT] 板块名称到基金关键词的映射
+    const sectorKeywords: Record<string, string[]> = {
+      '农牧饲渔': ['农业', '养殖', '畜牧', '渔业', '饲料', '农产品'],
+      '造纸印刷': ['造纸', '印刷', '纸业', '包装'],
+      '通信设备': ['通信', '5G', '设备', '网络'],
+      '装修装饰': ['装修', '装饰', '建材', '家居'],
+      '电子化学品': ['电子', '化学', '化工', '材料'],
+      '旅游酒店': ['旅游', '酒店', '餐饮', '消费'],
+      '医药生物': ['医药', '生物', '医疗', '健康'],
+      '新能源': ['新能源', '光伏', '锂电', '风电'],
+      '半导体': ['半导体', '芯片', '集成电路'],
+      '白酒': ['白酒', '酒', '消费'],
+      '银行': ['银行', '金融'],
+      '证券': ['证券', '券商'],
+      '保险': ['保险'],
+      '房地产': ['房地产', '地产', '房产'],
+      '汽车': ['汽车', '新能源车'],
+      '军工': ['军工', '国防', '航空'],
+      '钢铁': ['钢铁', '有色'],
+      '煤炭': ['煤炭', '能源'],
+    }
+    
+    // [WHAT] 检查是否是板块名称，使用对应关键词搜索
+    const mappedKeywords = sectorKeywords[kw]
+    if (mappedKeywords) {
+      results = list.filter((item) => {
+        const name = item.name.toLowerCase()
+        return mappedKeywords.some(k => name.includes(k.toLowerCase()))
+      })
+    } else {
+      // [WHAT] 拆分成单个字符进行匹配
+      const chars = kw.split('')
+      results = list.filter((item) => {
+        const name = item.name.toLowerCase()
+        // [HOW] 匹配包含任意一个字符的基金（至少匹配2个字符）
+        const matchCount = chars.filter(c => name.includes(c)).length
+        return matchCount >= Math.min(2, chars.length)
+      })
+    }
+  }
+  
+  return results.slice(0, limit)
 }
 
 /**
