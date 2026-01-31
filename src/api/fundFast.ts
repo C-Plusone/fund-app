@@ -150,9 +150,8 @@ export function fetchFundEstimateFast(code: string): Promise<FundEstimate> {
       const script = document.createElement('script')
       script.id = scriptId
       script.src = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`
-      console.log('[JSONP] 请求估值:', code)
-      script.onerror = (err) => {
-        console.error('[JSONP] 脚本加载失败:', code, err)
+      script.onerror = () => {
+        // [NOTE] 静默处理脚本加载失败，某些基金类型不支持估值
         cleanup()
         const idx = pendingRequests.findIndex(r => r.code === code)
         if (idx !== -1) {
@@ -164,7 +163,6 @@ export function fetchFundEstimateFast(code: string): Promise<FundEstimate> {
         else reject(new Error(`失败: ${code}`))
       }
       script.onload = () => {
-        console.log('[JSONP] 脚本加载成功:', code)
         setTimeout(cleanup, 100)
       }
       document.body.appendChild(script)
