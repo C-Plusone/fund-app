@@ -117,9 +117,9 @@ async function loadFundData() {
     })
     
     console.log('估值数据:', estimate)
-    fundInfo.value = estimate
     
     if (estimate) {
+      fundInfo.value = estimate
       shareClass.value = detectShareClass(fundCode.value, estimate.name)
       const gsz = parseFloat(estimate.gsz) || 0
       // [WHY] 今日最高/最低只基于当前估值，不包含昨收
@@ -134,8 +134,33 @@ async function loadFundData() {
         low24h.value = dwjz
       }
     } else {
-      shareClass.value = fundCode.value.endsWith('1') || fundCode.value.endsWith('3') ? 'C' : 'A'
-      console.warn('未获取到估值数据，可能是非交易时间或网络问题')
+      // [WHY] 估值获取失败时，尝试从基金列表获取基本信息
+      console.warn('未获取到估值数据，尝试从基金列表获取')
+      const { searchFund } = await import('@/api/fund')
+      const funds = await searchFund(fundCode.value, 1)
+      if (funds.length > 0) {
+        // [WHAT] 创建一个基础的 FundEstimate 对象
+        fundInfo.value = {
+          fundcode: fundCode.value,
+          name: funds[0]!.name,
+          dwjz: '0',
+          gsz: '0',
+          gszzl: '0',
+          gztime: '--'
+        }
+        shareClass.value = detectShareClass(fundCode.value, funds[0]!.name)
+      } else {
+        // [EDGE] 完全找不到信息，显示基金代码
+        fundInfo.value = {
+          fundcode: fundCode.value,
+          name: `基金 ${fundCode.value}`,
+          dwjz: '0',
+          gsz: '0',
+          gszzl: '0',
+          gztime: '--'
+        }
+        shareClass.value = fundCode.value.endsWith('1') || fundCode.value.endsWith('3') ? 'C' : 'A'
+      }
     }
     
     const now = new Date()
@@ -186,6 +211,16 @@ const priceChangePercent = computed(() => {
 })
 
 const isUp = computed(() => priceChangePercent.value >= 0)
+
+// [WHAT] 显示价格：优先显示估值，否则显示昨收，都无效显示 '--'
+const displayPrice = computed(() => {
+  if (!fundInfo.value) return '--'
+  const gsz = parseFloat(fundInfo.value.gsz)
+  if (gsz > 0) return gsz.toFixed(4)
+  const dwjz = parseFloat(fundInfo.value.dwjz)
+  if (dwjz > 0) return dwjz.toFixed(4)
+  return '--'
+})
 
 function goBack() {
   router.back()
@@ -262,7 +297,7 @@ function goToManager() {
       <div class="price-panel">
         <!-- 主价格 -->
         <div class="main-price" :class="isUp ? 'up' : 'down'">
-          <span class="price-value">{{ fundInfo?.gsz || '--' }}</span>
+          <span class="price-value">{{ displayPrice }}</span>
           <span class="price-unit">CNY</span>
         </div>
         
