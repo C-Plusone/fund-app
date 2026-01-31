@@ -24,6 +24,10 @@ const router = useRouter()
 const fundStore = useFundStore()
 const alertStore = useAlertStore()
 
+// [WHY] 会话级标记，确保远程配置只在首次启动时加载
+// [WHAT] 使用模块级变量而非响应式，避免后台切换重复触发
+let hasLoadedRemoteConfig = false
+
 // [WHAT] 大盘指数
 const indices = ref<MarketIndexSimple[]>([])
 
@@ -66,7 +70,12 @@ onMounted(async () => {
 })
 
 // [WHAT] 加载远程配置（公告和更新检查）
+// [WHY] 只在首次启动时加载，后台切换回来不重复加载
 async function loadRemoteConfig() {
+  // [WHY] 如果已经加载过，直接返回，避免后台切换重复弹窗
+  if (hasLoadedRemoteConfig) return
+  hasLoadedRemoteConfig = true
+  
   try {
     const config = await fetchRemoteConfig()
     if (!config) return
@@ -89,6 +98,15 @@ async function loadRemoteConfig() {
     if (remoteAnnouncements.value.length > 0) {
       const remoteNoticeTexts = remoteAnnouncements.value.map(a => `【${a.title}】${a.content.split('\n')[0]}`)
       notices.value = [...remoteNoticeTexts, ...defaultNotices]
+      
+      // [WHY] 首次启动自动弹出第一个公告
+      // [WHAT] 延迟 500ms 等待页面渲染完成后再弹出
+      setTimeout(() => {
+        if (remoteAnnouncements.value.length > 0) {
+          currentAnnouncement.value = remoteAnnouncements.value[0]
+          showAnnouncementPopup.value = true
+        }
+      }, 500)
     }
   } catch (err) {
     console.warn('加载远程配置失败:', err)
@@ -555,7 +573,15 @@ function submitAlert() {
         </div>
         <div class="announcement-detail-content">
           <p v-for="(line, idx) in currentAnnouncement.content.split('\n')" :key="idx">
-            {{ line }}
+            <!-- [WHY] 检测 URL 并使其可点击 -->
+            <a 
+              v-if="line.startsWith('http')" 
+              :href="line" 
+              target="_blank" 
+              class="announcement-link"
+              @click.stop
+            >{{ line }}</a>
+            <span v-else>{{ line }}</span>
           </p>
         </div>
         <div class="announcement-detail-footer">
@@ -1115,6 +1141,17 @@ function submitAlert() {
 
 .announcement-detail-content p:last-child {
   margin-bottom: 0;
+}
+
+/* [WHAT] 公告中的链接样式 */
+.announcement-link {
+  color: var(--color-primary);
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+.announcement-link:active {
+  opacity: 0.7;
 }
 
 .announcement-detail-footer {

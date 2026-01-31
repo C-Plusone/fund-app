@@ -1,16 +1,16 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "forceUpdate": false,
   "minVersion": "1.0.0",
   "announcements": [
     {
-      "id": "welcome-001",
-      "title": "欢迎使用基金宝",
-      "content": "感谢使用基金宝！这是一款开源的基金实时估值查看工具，支持自选管理、持仓跟踪、走势曲线等功能。\n\n如有问题或建议，欢迎在 GitHub 提交 Issue。",
+      "id": "github-link-001",
+      "title": "开源项目",
+      "content": "基金宝是一款开源的基金管理工具\n\n开源地址：\nhttps://github.com/xiriovo/fund-app\n\n欢迎 Star 支持！如有问题或建议，请在 GitHub 提交 Issue。\n\n投资有风险，理财需谨慎。",
       "type": "info",
       "showOnce": true,
       "startTime": "2026-01-01T00:00:00Z",
-      "endTime": "2026-12-31T23:59:59Z"
+      "endTime": "2027-12-31T23:59:59Z"
     }
   ],
   "updateUrl": "https://github.com/xiriovo/fund-app/releases/latest",
