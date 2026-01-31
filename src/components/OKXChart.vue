@@ -401,15 +401,39 @@ function drawChart() {
   } else {
     // ========== 其他模式：标准曲线图 ==========
     
-    // 绘制填充区域（曲线下方到底部）
+    // [WHAT] 绘制填充区域（使用平滑贝塞尔曲线）
     ctx.beginPath()
     ctx.moveTo(padding.left, chartBottom)
     
-    data.forEach((point, i) => {
-      const x = padding.left + (chartWidth / Math.max(data.length - 1, 1)) * i
-      const y = padding.top + (mainHeight - padding.top) * (1 - (point.value - minValue) / valueRange)
-      ctx.lineTo(x, y)
-    })
+    // [WHY] 先画底部起点到第一个数据点
+    const fillPoints: { x: number, y: number }[] = data.map((point, i) => ({
+      x: padding.left + (chartWidth / Math.max(data.length - 1, 1)) * i,
+      y: padding.top + (mainHeight - padding.top) * (1 - (point.value - minValue) / valueRange)
+    }))
+    
+    if (fillPoints.length > 0) {
+      ctx.lineTo(fillPoints[0]!.x, fillPoints[0]!.y)
+      
+      // [WHAT] 使用贝塞尔曲线绘制平滑填充边界
+      for (let i = 1; i < fillPoints.length; i++) {
+        const prev = fillPoints[i - 1]!
+        const curr = fillPoints[i]!
+        
+        if (i === 1) {
+          const cpX = (prev.x + curr.x) / 2
+          const cpY = (prev.y + curr.y) / 2
+          ctx.quadraticCurveTo(prev.x, prev.y, cpX, cpY)
+        } else {
+          const prevPrev = fillPoints[i - 2]!
+          const tension = 0.3
+          const cp1x = prev.x + (curr.x - prevPrev.x) * tension
+          const cp1y = prev.y + (curr.y - prevPrev.y) * tension
+          const cp2x = curr.x - (curr.x - prev.x) * tension
+          const cp2y = curr.y - (curr.y - prev.y) * tension
+          ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, curr.x, curr.y)
+        }
+      }
+    }
     
     // 闭合路径
     const lastX = padding.left + chartWidth
@@ -430,14 +454,41 @@ function drawChart() {
     ctx.fillStyle = fillGradient
     ctx.fill()
     
-    // 绘制走势曲线
+    // [WHAT] 绘制平滑走势曲线（使用贝塞尔曲线）
     ctx.beginPath()
-    data.forEach((point, i) => {
-      const x = padding.left + (chartWidth / Math.max(data.length - 1, 1)) * i
-      const y = padding.top + (mainHeight - padding.top) * (1 - (point.value - minValue) / valueRange)
-      if (i === 0) ctx.moveTo(x, y)
-      else ctx.lineTo(x, y)
-    })
+    const points: { x: number, y: number }[] = data.map((point, i) => ({
+      x: padding.left + (chartWidth / Math.max(data.length - 1, 1)) * i,
+      y: padding.top + (mainHeight - padding.top) * (1 - (point.value - minValue) / valueRange)
+    }))
+    
+    if (points.length > 0) {
+      ctx.moveTo(points[0]!.x, points[0]!.y)
+      
+      // [WHY] 使用三次贝塞尔曲线实现平滑弯曲效果
+      // [HOW] 每两个点之间计算控制点，生成平滑曲线
+      for (let i = 1; i < points.length; i++) {
+        const prev = points[i - 1]!
+        const curr = points[i]!
+        
+        if (i === 1) {
+          // 第一段：简单的二次贝塞尔
+          const cpX = (prev.x + curr.x) / 2
+          const cpY = (prev.y + curr.y) / 2
+          ctx.quadraticCurveTo(prev.x, prev.y, cpX, cpY)
+        } else {
+          const prevPrev = points[i - 2]!
+          // [WHAT] 计算平滑控制点
+          // 控制点基于前后点的斜率
+          const tension = 0.3 // 张力系数，越小曲线越平滑
+          const cp1x = prev.x + (curr.x - prevPrev.x) * tension
+          const cp1y = prev.y + (curr.y - prevPrev.y) * tension
+          const cp2x = curr.x - (curr.x - prev.x) * tension
+          const cp2y = curr.y - (curr.y - prev.y) * tension
+          
+          ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, curr.x, curr.y)
+        }
+      }
+    }
     ctx.strokeStyle = isOverallUp ? upColor : downColor
     ctx.lineWidth = 2
     ctx.stroke()
