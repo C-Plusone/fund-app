@@ -197,10 +197,17 @@ const priceChangePercent = computed(() => {
 
 const isUp = computed(() => priceChangePercent.value >= 0)
 
-// [WHAT] 近1年收益
-const yearReturn = computed(() => {
-  const item = periodReturns.value.find(p => p.period === '1y')
-  return item?.fundReturn || 0
+// [WHAT] 最佳可用周期收益（优先1年，其次6月、3月、1月）
+const bestPeriodReturn = computed(() => {
+  const priorities = ['1y', '6m', '3m', '1m']
+  for (const period of priorities) {
+    const item = periodReturns.value.find(p => p.period === period)
+    if (item && item.fundReturn !== 0) {
+      const labels: Record<string, string> = { '1y': '近1年', '6m': '近6月', '3m': '近3月', '1m': '近1月' }
+      return { label: labels[period] || period, value: item.fundReturn }
+    }
+  }
+  return { label: '近1年', value: 0 }
 })
 
 
@@ -334,9 +341,9 @@ function formatPercent(num: number): string {
         </div>
         <div class="sub-metrics">
           <div class="metric-item">
-            <div class="metric-label">近1年</div>
-            <div class="metric-value" :class="yearReturn >= 0 ? 'up' : 'down'">
-              {{ formatPercent(yearReturn) }}
+            <div class="metric-label">{{ bestPeriodReturn.label }}</div>
+            <div class="metric-value" :class="bestPeriodReturn.value >= 0 ? 'up' : 'down'">
+              {{ bestPeriodReturn.value !== 0 ? formatPercent(bestPeriodReturn.value) : '--' }}
             </div>
           </div>
         </div>
