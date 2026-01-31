@@ -40,10 +40,6 @@ const activeTab = ref<'chart' | 'performance' | 'profit'>('chart')
 // [WHAT] 持仓面板展开状态
 const holdingExpanded = ref(true)
 
-// [WHAT] 看涨/看跌投票
-const bullCount = ref(41080)
-const bearCount = ref(15942)
-const hasVoted = ref(false)
 
 // [WHAT] 持仓信息（如果已持有）
 const holdingInfo = computed(() => {
@@ -207,14 +203,6 @@ const yearReturn = computed(() => {
   return item?.fundReturn || 0
 })
 
-// [WHAT] 同类排名
-const rankInfo = computed(() => {
-  const item = periodReturns.value.find(p => p.period === '1y')
-  if (item && item.rank > 0) {
-    return `${item.rank}/${item.totalCount}`
-  }
-  return '--'
-})
 
 function goBack() {
   router.back()
@@ -243,27 +231,6 @@ function goNextFund() {
 
 function goToSearch() {
   router.push('/search')
-}
-
-// [WHAT] 投票
-function voteBull() {
-  if (hasVoted.value) {
-    showToast('您已投票')
-    return
-  }
-  bullCount.value++
-  hasVoted.value = true
-  showToast('看涨 +1')
-}
-
-function voteBear() {
-  if (hasVoted.value) {
-    showToast('您已投票')
-    return
-  }
-  bearCount.value++
-  hasVoted.value = true
-  showToast('看跌 +1')
 }
 
 // [WHAT] 底部操作
@@ -371,10 +338,6 @@ function formatPercent(num: number): string {
             <div class="metric-value" :class="yearReturn >= 0 ? 'up' : 'down'">
               {{ formatPercent(yearReturn) }}
             </div>
-          </div>
-          <div class="metric-item">
-            <div class="metric-label">持有人数排名</div>
-            <div class="metric-value">{{ rankInfo }}</div>
           </div>
         </div>
       </div>
@@ -504,21 +467,6 @@ function formatPercent(num: number): string {
         :last-close="fundInfo?.dwjz ? parseFloat(fundInfo.dwjz) : 0"
       />
       
-      <!-- 看涨/看跌投票 -->
-      <div class="vote-section">
-        <div class="vote-input">
-          <van-icon name="comment-o" />
-          <span>点我发弹幕</span>
-        </div>
-        <div class="vote-buttons">
-          <div class="vote-btn bull" @click="voteBull">
-            看涨{{ bullCount > 10000 ? (bullCount/10000).toFixed(1) + '万' : bullCount }}人
-          </div>
-          <div class="vote-btn bear" @click="voteBear">
-            看跌{{ bearCount > 10000 ? (bearCount/10000).toFixed(1) + '万' : bearCount }}人
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- 业绩走势（Tab2） -->
@@ -876,50 +824,6 @@ function formatPercent(num: number): string {
   display: flex;
   align-items: center;
   gap: 4px;
-}
-
-/* ========== 投票区域 ========== */
-.vote-section {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  gap: 12px;
-  border-top: 1px solid var(--border-color);
-}
-
-.vote-input {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--bg-tertiary);
-  border-radius: 20px;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.vote-buttons {
-  display: flex;
-  gap: 8px;
-}
-
-.vote-btn {
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.vote-btn.bull {
-  background: #f56c6c;
-  color: #fff;
-}
-
-.vote-btn.bear {
-  background: #67c23a;
-  color: #fff;
 }
 
 /* ========== 业绩走势 ========== */
