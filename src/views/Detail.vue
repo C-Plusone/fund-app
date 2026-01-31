@@ -388,6 +388,14 @@ function formatPercent(num: number): string {
         </div>
         <div class="sub-metrics">
           <div class="metric-item">
+            <div class="metric-label">估算净值</div>
+            <div class="metric-value">{{ fundInfo?.gsz || '--' }}</div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">昨日净值</div>
+            <div class="metric-value">{{ fundInfo?.dwjz || '--' }}</div>
+          </div>
+          <div class="metric-item">
             <div class="metric-label">{{ bestPeriodReturn.label }}</div>
             <div class="metric-value" :class="bestPeriodReturn.value >= 0 ? 'up' : 'down'">
               {{ bestPeriodReturn.value !== 0 ? formatPercent(bestPeriodReturn.value) : '--' }}
@@ -663,12 +671,16 @@ function formatPercent(num: number): string {
           class="table-row"
         >
           <span>
-            {{ fee.maxAmount === Infinity 
-              ? `≥${fee.minAmount}万` 
-              : `${fee.minAmount}-${fee.maxAmount}万` }}
+            {{ fee.minAmount === 0 && fee.maxAmount === Infinity 
+              ? '全部金额'
+              : fee.maxAmount === Infinity 
+                ? `≥${fee.minAmount}万` 
+                : fee.minAmount === 0
+                  ? `<${fee.maxAmount}万`
+                  : `${fee.minAmount}-${fee.maxAmount}万` }}
           </span>
-          <span>{{ fee.rate >= 1000 ? `${fee.rate}元` : `${fee.rate}%` }}</span>
-          <span class="discount">{{ fee.discountRate >= 1000 ? `${fee.discountRate}元` : `${fee.discountRate}%` }}</span>
+          <span>{{ fee.rate >= 1000 ? `${fee.rate}元` : fee.rate === 0 ? '免费' : `${fee.rate}%` }}</span>
+          <span class="discount">{{ fee.discountRate >= 1000 ? `${fee.discountRate}元` : fee.discountRate === 0 ? '免费' : `${fee.discountRate}%` }}</span>
         </div>
       </div>
       
