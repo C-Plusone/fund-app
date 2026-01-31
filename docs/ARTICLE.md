@@ -20,6 +20,14 @@
 - **开源协议**：MIT License
 - **技术栈**：Vue 3 + TypeScript + Vant 4 + Capacitor 7
 
+### 下载地址
+
+| 下载渠道 | 链接 | 备注 |
+|---------|------|------|
+| GitHub Releases | [下载](https://github.com/xiriovo/fund-app/releases) | 最新版本 |
+| 123云盘 | [下载](https://www.123865.com/s/Tfksjv-0rThd) | 国内高速 |
+| 蓝奏云 | [下载](https://wwbda.lanzn.com/ippf73hh019i) | 密码: `36mh` |
+
 ## 核心功能
 
 ### 1. 实时估值
