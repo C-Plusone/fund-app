@@ -276,7 +276,7 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
 <template>
   <div class="holding-page">
     <!-- 顶部导航栏 -->
-    <van-nav-bar title="我的持仓" left-arrow @click-left="goHome">
+    <van-nav-bar title="我的持仓">
       <template #right>
         <van-icon name="add-o" size="20" @click="openAddDialog" />
       </template>
