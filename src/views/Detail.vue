@@ -270,11 +270,11 @@ function editHolding() {
 }
 
 function setReminder() {
-  showToast('提醒功能开发中')
+  router.push('/alerts')
 }
 
 function showTransactions() {
-  showToast('交易记录开发中')
+  router.push(`/trades/${fundCode.value}`)
 }
 
 async function removeFromWatchlist() {

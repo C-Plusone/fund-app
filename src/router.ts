@@ -45,7 +45,13 @@ const router = createRouter({
     {
       path: '/trades',
       name: 'trades',
-      component: () => import('@/views/TradeHistory.vue'),
+      component: () => import('@/views/Transactions.vue'),
+      meta: { title: '交易记录' }
+    },
+    {
+      path: '/trades/:code',
+      name: 'tradesDetail',
+      component: () => import('@/views/Transactions.vue'),
       meta: { title: '交易记录' }
     },
     {
