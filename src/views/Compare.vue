@@ -93,6 +93,24 @@ function removeFund(code: string) {
   selectedFunds.value = selectedFunds.value.filter(f => f.code !== code)
 }
 
+// [WHAT] 刷新所有基金数据（清除缓存后重新加载）
+async function refreshAll() {
+  // 清除缓存
+  const { clearFundCache } = await import('@/api/fundFast')
+  selectedFunds.value.forEach(f => {
+    clearFundCache(f.code)
+    localStorage.removeItem(`fund_period_ext_${f.code}`)
+  })
+  
+  // 重新加载
+  const funds = [...selectedFunds.value]
+  selectedFunds.value = []
+  
+  for (const fund of funds) {
+    await addFund(fund.code, fund.name)
+  }
+}
+
 // [WHAT] 获取基金某个周期的收益
 function getReturn(fund: CompareFund, period: string): number | null {
   const item = fund.periodReturns.find(p => p.period === period)
@@ -158,6 +176,12 @@ function goToDetail(code: string) {
       @click-left="goBack"
     >
       <template #right>
+        <van-icon 
+          name="replay" 
+          size="20" 
+          style="margin-right: 12px"
+          @click="refreshAll" 
+        />
         <van-icon 
           v-if="selectedFunds.length < maxFunds"
           name="plus" 
