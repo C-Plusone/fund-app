@@ -6,6 +6,7 @@ import { ref, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { searchFund } from '@/api/fund'
+import { fetchFundEstimateFast } from '@/api/fundFast'
 import { showToast, showLoadingToast, closeToast } from 'vant'
 import type { FundInfo } from '@/types/fund'
 
@@ -23,7 +24,13 @@ onMounted(() => {
     doSearch(q)
   }
 })
-const searchResults = ref<FundInfo[]>([])
+
+// [WHAT] 扩展的搜索结果，包含实时涨跌幅
+interface FundInfoWithChange extends FundInfo {
+  gszzl?: string  // 估算涨跌幅
+}
+
+const searchResults = ref<FundInfoWithChange[]>([])
 const isSearching = ref(false)
 
 // [WHAT] 防抖搜索 - 输入停止 300ms 后触发
@@ -52,11 +59,42 @@ async function doSearch(kw: string) {
   try {
     const results = await searchFund(kw, 30)
     searchResults.value = results
+    
+    // [WHY] 异步获取涨跌幅数据，不阻塞搜索结果显示
+    // [HOW] 并行请求前10个基金的实时估值，避免请求过多
+    const topResults = results.slice(0, 10)
+    topResults.forEach(async (fund, index) => {
+      try {
+        const estimate = await fetchFundEstimateFast(fund.code)
+        if (estimate && searchResults.value[index]?.code === fund.code) {
+          searchResults.value[index]!.gszzl = estimate.gszzl
+        }
+      } catch {
+        // 忽略单个基金获取失败
+      }
+    })
   } catch (err) {
     showToast('搜索失败')
   } finally {
     isSearching.value = false
   }
+}
+
+// [WHAT] 格式化涨跌幅显示
+function formatChange(gszzl?: string): string {
+  if (!gszzl) return ''
+  const val = parseFloat(gszzl)
+  if (isNaN(val)) return ''
+  const prefix = val >= 0 ? '+' : ''
+  return `${prefix}${val.toFixed(2)}%`
+}
+
+// [WHAT] 获取涨跌幅颜色类名
+function getChangeClass(gszzl?: string): string {
+  if (!gszzl) return ''
+  const val = parseFloat(gszzl)
+  if (isNaN(val)) return ''
+  return val >= 0 ? 'up' : 'down'
 }
 
 // [WHAT] 添加基金到自选
@@ -117,6 +155,15 @@ function isInWatchlist(code: string): boolean {
         clickable
         @click="handleAdd(fund)"
       >
+        <template #value>
+          <span 
+            v-if="fund.gszzl" 
+            class="fund-change" 
+            :class="getChangeClass(fund.gszzl)"
+          >
+            {{ formatChange(fund.gszzl) }}
+          </span>
+        </template>
         <template #right-icon>
           <van-tag v-if="isInWatchlist(fund.code)" type="success">已添加</van-tag>
           <van-icon v-else name="add-o" size="20" color="#1989fa" />
@@ -163,5 +210,20 @@ function isInWatchlist(code: string): boolean {
   padding: 40px 20px;
   color: var(--text-secondary);
   font-size: 14px;
+}
+
+/* [WHAT] 涨跌幅数字样式 */
+.fund-change {
+  font-size: 14px;
+  font-weight: 500;
+  margin-right: 8px;
+}
+
+.fund-change.up {
+  color: #f56c6c;
+}
+
+.fund-change.down {
+  color: #67c23a;
 }
 </style>
