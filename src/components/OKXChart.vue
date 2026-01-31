@@ -442,12 +442,13 @@ function drawChart() {
     ctx.lineWidth = 2
     ctx.stroke()
     
-    // 绘制最新点动画
+    // 绘制最新点动画 + 精确数值标注
     if (data.length > 0) {
       const lastPoint = data[data.length - 1]!
       const lastPointX = padding.left + chartWidth
       const lastPointY = padding.top + (mainHeight - padding.top) * (1 - (lastPoint.value - minValue) / valueRange)
       
+      // [WHAT] 绘制脉冲动画点
       const pulseSize = 3 + Math.sin(Date.now() / 200) * 1.5
       ctx.beginPath()
       ctx.arc(lastPointX, lastPointY, pulseSize, 0, Math.PI * 2)
@@ -461,6 +462,16 @@ function drawChart() {
       ctx.globalAlpha = 0.4
       ctx.stroke()
       ctx.globalAlpha = 1
+      
+      // [WHAT] 在最新点旁边显示精确数值
+      const priceText = lastPoint.value.toFixed(4)
+      ctx.font = 'bold 11px Arial'
+      ctx.textAlign = 'left'
+      ctx.fillStyle = isOverallUp ? upColor : downColor
+      
+      // [WHY] 根据点位置决定标签显示在上方还是下方
+      const labelY = lastPointY < mainHeight / 2 ? lastPointY + 18 : lastPointY - 8
+      ctx.fillText(priceText, lastPointX + 8, labelY)
     }
   }
   
