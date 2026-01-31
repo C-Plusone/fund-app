@@ -7,6 +7,8 @@
 ![Capacitor](https://img.shields.io/badge/Capacitor-7.x-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Android-green.svg)
 
+> 📖 **详细介绍**：[查看完整项目文档](./docs/ARTICLE.md)
+
 ## 功能特点
 
 ### 核心功能
