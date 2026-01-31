@@ -72,27 +72,32 @@ const filteredData = computed(() => {
   const now = new Date()
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   
-  // [WHY] 当日模式：显示今日数据 + 实时估值
+  // [WHY] 当日模式：显示昨日完整曲线 + 今日实时（如果有）
   if (showIntradayChart.value) {
-    // [WHAT] 获取最近两天的数据（昨日 + 今日）
-    const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000)
+    // [WHAT] 获取最近7天的数据，确保有足够的点绘制平滑曲线
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
     let data = chartData.value
-      .filter(item => new Date(item.time) >= twoDaysAgo)
+      .filter(item => new Date(item.time) >= weekAgo)
       .map((item, i) => ({ 
         ...item, 
         volume: 50 + Math.abs(item.change) * 30 + (i % 5) * 10
       }))
     
-    // [WHAT] 如果有实时估值且今天没有数据，添加今日数据点
+    // [WHY] 检查今天是否有数据（收盘后才有）
     const hasTodayData = data.some(d => d.time === today)
-    if (!hasTodayData && props.realtimeValue > 0) {
+    
+    // [WHAT] 判断是否在交易时间内有实时数据
+    const hasRealtimeData = props.realtimeValue > 0 && isTradingTime()
+    
+    if (hasRealtimeData && !hasTodayData) {
+      // [WHAT] 交易中：添加今日实时数据点
       data = [...data, {
         time: today,
         value: props.realtimeValue,
         change: props.realtimeChange,
         volume: 100
       }]
-    } else if (hasTodayData && props.realtimeValue > 0) {
+    } else if (hasRealtimeData && hasTodayData) {
       // [WHAT] 更新今日数据为实时值
       data = data.map(d => d.time === today ? {
         ...d,
@@ -100,6 +105,7 @@ const filteredData = computed(() => {
         change: props.realtimeChange
       } : d)
     }
+    // [EDGE] 非交易时间且今天没收盘数据：显示历史数据，等待更新
     
     // [EDGE] 如果没有数据，返回占位数据
     if (data.length === 0) {
