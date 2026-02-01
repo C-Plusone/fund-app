@@ -182,11 +182,21 @@ export const useHoldingStore = defineStore('holding', () => {
     const profitRate = cost > 0 ? (profit / cost) * 100 : 0
     
     // [WHAT] 计算当日收益 = 持有份额 × (当前估值 - 昨日净值) - 当日服务费
-    let todayProfit = shares * (currentValue - lastValue)
-    if (holding.shareClass === 'C' && holding.serviceFeeRate) {
-      const dailyFee = calculateDailyServiceFee(shares, currentValue, holding.serviceFeeRate)
-      todayProfit -= dailyFee
+    // [WHY] 如果今天休市（估值时间不是今天），当日收益应该为 0
+    let todayProfit = 0
+    const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
+    const gzDate = data.gztime?.split(' ')[0] || '' // 从 "2024-01-01 15:00" 提取日期
+    const isTradingDay = gzDate === today
+    
+    if (isTradingDay) {
+      // [WHAT] 今天是交易日，正常计算当日收益
+      todayProfit = shares * (currentValue - lastValue)
+      if (holding.shareClass === 'C' && holding.serviceFeeRate) {
+        const dailyFee = calculateDailyServiceFee(shares, currentValue, holding.serviceFeeRate)
+        todayProfit -= dailyFee
+      }
     }
+    // [ELSE] 休市日当日收益为 0，不计算
 
     holdings.value[index] = {
       ...holding,
@@ -195,7 +205,8 @@ export const useHoldingStore = defineStore('holding', () => {
       marketValue,
       profit,
       profitRate,
-      todayChange: data.gszzl,
+      // [WHY] 休市日当日涨跌幅显示为 0
+      todayChange: isTradingDay ? data.gszzl : '0.00',
       todayProfit,
       loading: false,
       // [WHAT] 更新份额（如果原来无效）
