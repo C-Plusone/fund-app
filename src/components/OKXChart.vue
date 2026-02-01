@@ -72,14 +72,14 @@ const filteredData = computed(() => {
   const now = new Date()
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   
-  // [WHY] 当日模式：显示昨日分时曲线 + 今日实时（如果有）
-  // [WHAT] 基金没有分时数据API，基于日K线生成模拟分时曲线
+  // [WHY] 当日模式：显示昨日收盘 + 今日实时估值
+  // [WHAT] 基金没有分时API，当日模式只显示2个数据点
   if (showIntradayChart.value) {
-    const sortedData = [...chartData.value].sort((a, b) => 
-      new Date(a.time).getTime() - new Date(b.time).getTime()
-    )
+    // [WHY] 获取所有历史数据，取最近的作为昨日收盘
+    const sortedData = [...chartData.value]
+      .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
     
-    if (sortedData.length < 2) {
+    if (sortedData.length === 0) {
       return [{
         time: today,
         value: props.lastClose || props.realtimeValue || 1,
@@ -88,86 +88,42 @@ const filteredData = computed(() => {
       }]
     }
     
-    // [WHAT] 获取最近两天的数据用于生成分时曲线
-    const lastDay = sortedData[sortedData.length - 1]!
-    const prevDay = sortedData[sortedData.length - 2]!
+    // [WHAT] 获取最后一个交易日数据（昨日收盘）
+    const lastTradingDay = sortedData[sortedData.length - 1]!
+    const hasTodayData = lastTradingDay.time === today
     
-    // [WHY] 基于前一天收盘价和当天收盘价，生成一天的分时曲线
-    // [HOW] 使用正弦波叠加模拟真实的日内波动
-    const generateIntradayPoints = (
-      openValue: number, 
-      closeValue: number, 
-      dateStr: string,
-      pointCount: number = 60
-    ): SimpleKLineData[] => {
-      const points: SimpleKLineData[] = []
-      const range = Math.abs(closeValue - openValue)
-      const volatility = range * 0.3 + closeValue * 0.002 // 波动幅度
+    // [WHY] 如果最后数据就是今天，取前一天作为昨日
+    const yesterdayData = hasTodayData && sortedData.length > 1 
+      ? sortedData[sortedData.length - 2]! 
+      : lastTradingDay
+    
+    let data: typeof sortedData = [{
+      time: yesterdayData.time,
+      value: yesterdayData.value,
+      change: yesterdayData.change,
+      volume: 60
+    }]
+    
+    // [WHY] 添加今日实时数据点
+    const hasRealtimeData = props.realtimeValue > 0
+    
+    if (hasRealtimeData) {
+      const realtimeChange = ((props.realtimeValue - yesterdayData.value) / yesterdayData.value) * 100
       
-      for (let i = 0; i < pointCount; i++) {
-        const progress = i / (pointCount - 1) // 0 到 1
-        
-        // [WHAT] 基础趋势：从开盘价平滑过渡到收盘价
-        const trend = openValue + (closeValue - openValue) * progress
-        
-        // [WHAT] 叠加多个正弦波模拟日内波动
-        const wave1 = Math.sin(progress * Math.PI * 4) * volatility * 0.5
-        const wave2 = Math.sin(progress * Math.PI * 7 + 1) * volatility * 0.3
-        const wave3 = Math.sin(progress * Math.PI * 11 + 2) * volatility * 0.2
-        
-        // [WHY] 最后几个点平滑收敛到收盘价
-        const convergeFactor = progress > 0.85 ? (progress - 0.85) / 0.15 : 0
-        const noise = (wave1 + wave2 + wave3) * (1 - convergeFactor)
-        
-        const value = trend + noise
-        const change = ((value - openValue) / openValue) * 100
-        
-        // [WHAT] 生成时间标签 09:30 - 15:00
-        const hour = Math.floor(9.5 + progress * 5.5)
-        const minute = Math.floor((9.5 + progress * 5.5 - hour) * 60)
-        const timeLabel = `${dateStr} ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
-        
-        points.push({
-          time: timeLabel,
-          value: Number(value.toFixed(4)),
-          change: Number(change.toFixed(2)),
-          volume: 50 + Math.abs(change) * 10 + Math.random() * 20
-        })
-      }
-      return points
-    }
-    
-    // [WHAT] 生成昨日分时曲线
-    const yesterdayPoints = generateIntradayPoints(
-      prevDay.value, 
-      lastDay.value, 
-      lastDay.time,
-      60
-    )
-    
-    // [WHAT] 判断是否在交易时间内有实时数据
-    const hasRealtimeData = props.realtimeValue > 0 && isTradingTime()
-    const hasTodayData = sortedData.some(d => d.time === today)
-    
-    let data = [...yesterdayPoints]
-    
-    // [WHAT] 如果有今日实时数据，添加今日走势
-    if (hasRealtimeData && !hasTodayData) {
-      // 生成今日部分曲线（到当前时间）
-      const nowHour = now.getHours()
-      const nowMinute = now.getMinutes()
-      const tradingProgress = Math.min(1, Math.max(0, 
-        ((nowHour - 9.5) + nowMinute / 60) / 5.5
-      ))
-      const todayPointCount = Math.max(5, Math.floor(tradingProgress * 60))
-      
-      const todayPoints = generateIntradayPoints(
-        lastDay.value,
-        props.realtimeValue,
-        today,
-        todayPointCount
-      )
-      data = [...data, ...todayPoints]
+      data = [...data, {
+        time: today,
+        value: props.realtimeValue,
+        change: props.realtimeChange || Number(realtimeChange.toFixed(2)),
+        volume: 80
+      }]
+    } else if (hasTodayData) {
+      // [WHAT] 没有实时数据但有今日净值，使用今日净值
+      data = [...data, {
+        time: lastTradingDay.time,
+        value: lastTradingDay.value,
+        change: lastTradingDay.change,
+        volume: 80
+      }]
     }
     
     return data
@@ -180,12 +136,15 @@ const filteredData = computed(() => {
   
   const startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
   
-  let data = chartData.value
+  // [WHY] 先按时间排序，再过滤指定天数范围
+  let data = [...chartData.value]
+    .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
     .filter(item => new Date(item.time) >= startDate)
     .map((item, i) => ({ 
       ...item, 
       volume: 50 + Math.abs(item.change) * 30 + (i % 5) * 10
     }))
+  
   
   // [WHY] 实时更新当日K线数据点
   if (props.realtimeValue > 0 && data.length > 0) {
@@ -575,15 +534,36 @@ function drawChart() {
       ctx.stroke()
       ctx.globalAlpha = 1
       
-      // [WHAT] 在最新点旁边显示精确数值
+      // [WHAT] 在最新点旁边显示精确数值（带背景框避免与Y轴刻度重叠）
       const priceText = lastPoint.value.toFixed(4)
       ctx.font = 'bold 11px Arial'
-      ctx.textAlign = 'left'
-      ctx.fillStyle = isOverallUp ? upColor : downColor
       
-      // [WHY] 根据点位置决定标签显示在上方还是下方
+      // [WHY] 根据点位置决定标签显示在上方还是下方，并加背景框
       const labelY = lastPointY < mainHeight / 2 ? lastPointY + 18 : lastPointY - 8
-      ctx.fillText(priceText, lastPointX + 8, labelY)
+      const labelX = lastPointX + 5
+      
+      // [WHAT] 测量文本宽度，绘制背景框
+      const textMetrics = ctx.measureText(priceText)
+      const textWidth = textMetrics.width
+      const textHeight = 14
+      const bgPadding = 3
+      
+      // [WHY] 绘制背景框，避免与右侧Y轴刻度重叠
+      ctx.fillStyle = isOverallUp ? 'rgba(246, 70, 93, 0.9)' : 'rgba(14, 203, 129, 0.9)'
+      ctx.beginPath()
+      ctx.roundRect(
+        labelX - bgPadding, 
+        labelY - textHeight + 2, 
+        textWidth + bgPadding * 2, 
+        textHeight + bgPadding,
+        3
+      )
+      ctx.fill()
+      
+      // [WHAT] 绘制白色文字
+      ctx.fillStyle = '#ffffff'
+      ctx.textAlign = 'left'
+      ctx.fillText(priceText, labelX, labelY)
     }
   }
   
@@ -592,7 +572,9 @@ function drawChart() {
   ctx.font = '10px Arial'
   ctx.textAlign = 'center'
   
-  const labelCount = Math.min(5, data.length)
+  // [WHY] 移动端减少标签数量避免重叠，根据屏幕宽度动态调整
+  const maxLabels = width < 350 ? 3 : (width < 450 ? 4 : 5)
+  const labelCount = Math.min(maxLabels, data.length)
   for (let i = 0; i < labelCount; i++) {
     const idx = Math.floor((data.length - 1) * i / Math.max(labelCount - 1, 1))
     const point = data[idx]
@@ -600,8 +582,16 @@ function drawChart() {
     const x = padding.left + (chartWidth / Math.max(data.length - 1, 1)) * idx
     
     // [WHAT] 显示时间标签
-    const parts = point.time.split('-')
-    const label = parts.length >= 3 ? `${parts[1]}-${parts[2]}` : point.time.slice(-5)
+    // [WHY] 当日分时模式只显示时间（如 09:30），避免与日期重叠
+    let label: string
+    if (isIntradayMode.value && point.time.includes(' ')) {
+      // 分时模式：只显示时间部分
+      label = point.time.split(' ')[1] || point.time.slice(-5)
+    } else {
+      // K线模式：显示日期
+      const parts = point.time.split('-')
+      label = parts.length >= 3 ? `${parts[1]}-${parts[2].split(' ')[0]}` : point.time.slice(-5)
+    }
     ctx.fillText(label, x, height - 5)
   }
   

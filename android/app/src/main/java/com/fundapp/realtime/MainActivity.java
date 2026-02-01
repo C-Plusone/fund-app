@@ -1,5 +1,30 @@
 package com.fundapp.realtime;
 
+import android.os.Bundle;
+import android.view.View;
+import android.view.WindowManager;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
-public class MainActivity extends BridgeActivity {}
+/**
+ * [WHY] 主Activity，禁用全屏沉浸模式，显示系统虚拟导航栏
+ * [WHAT] 继承 Capacitor 的 BridgeActivity，重写 onCreate 来配置窗口模式
+ */
+public class MainActivity extends BridgeActivity {
+    
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        
+        // [WHY] 禁用全屏沉浸模式，让系统导航栏始终显示
+        // [WHAT] 设置窗口不占用系统栏区域，导航栏正常显示
+        View decorView = getWindow().getDecorView();
+        decorView.setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_VISIBLE
+        );
+        
+        // [WHAT] 确保内容不会延伸到导航栏下方
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
+    }
+}
