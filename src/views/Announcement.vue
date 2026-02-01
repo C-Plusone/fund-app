@@ -24,10 +24,12 @@ const activeTab = ref<'announcement' | 'update' | 'about'>('announcement')
 const updateLogs = [
   {
     version: '1.3.0',
-    date: '2026-01-30',
+    date: '2026-02-01',
     changes: [
-      '新增：使用 jsDelivr CDN 托管远程配置',
-      '优化：更新检测稳定性提升',
+      '新增：全局水印防盗版标识',
+      '新增：应用内更新检测提示',
+      '优化：点击更新跳转123云盘下载',
+      '修复：休市日当日收益显示为0',
     ]
   },
   {
