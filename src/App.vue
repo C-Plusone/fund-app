@@ -6,6 +6,9 @@ import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showToast } from 'vant'
 
+// [WHAT] 水印文字
+const watermarkText = '开源软件基金宝'
+
 const route = useRoute()
 const router = useRouter()
 
@@ -97,6 +100,13 @@ function onTabChange(name: string | number) {
 
 <template>
   <div class="app-container">
+    <!-- 全局水印 -->
+    <div class="watermark">
+      <div class="watermark-content">
+        <span v-for="i in 50" :key="i" class="watermark-text">{{ watermarkText }}</span>
+      </div>
+    </div>
+
     <!-- 路由视图 -->
     <!-- [WHY] 暂时禁用 keep-alive 避免页面缓存混乱 -->
     <router-view />
@@ -123,5 +133,41 @@ function onTabChange(name: string | number) {
   background: var(--bg-primary);
   padding-bottom: 50px;
   transition: background-color 0.3s;
+}
+
+/* [WHY] 全局水印样式 */
+/* [WHAT] 覆盖整个页面，半透明，不可点击 */
+.watermark {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9999;
+  pointer-events: none; /* [WHY] 不阻挡用户点击 */
+  overflow: hidden;
+}
+
+.watermark-content {
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(-30deg); /* [WHY] 斜向排列更美观 */
+}
+
+.watermark-text {
+  display: inline-block;
+  padding: 30px 50px;
+  font-size: 16px;
+  font-weight: 500;
+  color: rgba(128, 128, 128, 0.15); /* [WHY] 半透明灰色，不影响阅读 */
+  white-space: nowrap;
+  user-select: none;
 }
 </style>
