@@ -5,13 +5,13 @@
  * [DEPS] 依赖 GitHub Pages 托管的 announcement.json 文件
  */
 
-// [WHAT] 远程配置文件 URL，部署后替换为实际地址
-// [HOW] 本地开发时使用相对路径，生产环境使用完整 URL
-// [NOTE] 部署后将 xiriovo 替换为实际 GitHub 用户名
+// [WHAT] 远程配置文件 URL
+// [HOW] 本地开发时使用相对路径，生产环境使用 jsDelivr CDN（免费、国内可访问）
+// [WHY] jsDelivr 直接代理 GitHub 仓库文件，无需部署 GitHub Pages
 const isDev = import.meta.env.DEV
 const REMOTE_CONFIG_URL = isDev 
   ? '/config/announcement.json'
-  : 'https://xiriovo.github.io/fund-app/config/announcement.json'
+  : 'https://cdn.jsdelivr.net/gh/xiriovo/fund-app@main/public/config/announcement.json'
 
 /**
  * 公告类型
