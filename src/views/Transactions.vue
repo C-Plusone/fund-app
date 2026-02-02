@@ -284,8 +284,11 @@ function goToDetail(code: string) {
 
 <style scoped>
 .transactions-page {
-  min-height: 100vh;
+  height: 100%;
   background: var(--bg-primary);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 /* 统计卡片 */

@@ -323,8 +323,11 @@ function selectSearchResult(fund: { code: string, name: string }) {
 
 <style scoped>
 .alerts-page {
-  min-height: 100vh;
+  height: 100%;
   background: var(--bg-primary);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .alert-list {

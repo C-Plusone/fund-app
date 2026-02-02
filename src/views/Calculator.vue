@@ -232,9 +232,12 @@ function startInvest() {
 
 <style scoped>
 .calculator-page {
-  min-height: 100vh;
+  height: 100%;
   background: var(--bg-primary);
   padding-bottom: 80px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 /* 参数区域 */

@@ -109,7 +109,10 @@ function onTabChange(name: string | number) {
 
     <!-- 路由视图 -->
     <!-- [WHY] 暂时禁用 keep-alive 避免页面缓存混乱 -->
-    <router-view />
+    <!-- [WHY] 包装容器确保页面撑满剩余空间，正确处理 Android 滚动 -->
+    <div class="page-wrapper">
+      <router-view />
+    </div>
 
     <!-- 底部导航栏 -->
     <van-tabbar
@@ -128,11 +131,24 @@ function onTabChange(name: string | number) {
 
 <style scoped>
 .app-container {
-  min-height: 100vh;
+  /* [WHY] 固定高度，让子组件处理滚动 */
+  height: 100%;
   /* [WHY] 使用主题变量 */
   background: var(--bg-primary);
-  padding-bottom: 50px;
   transition: background-color 0.3s;
+  /* [WHY] 防止容器本身滚动，由子页面处理 */
+  overflow: hidden;
+  /* [WHY] 弹性布局，让 router-view 撑满剩余空间 */
+  display: flex;
+  flex-direction: column;
+}
+
+/* [WHY] 页面包装器，撑满 tabbar 之外的所有空间 */
+.page-wrapper {
+  flex: 1;
+  overflow: hidden;
+  /* [WHY] 相对定位，让子页面可以使用绝对定位或百分比高度 */
+  position: relative;
 }
 
 /* [WHY] 全局水印样式 */

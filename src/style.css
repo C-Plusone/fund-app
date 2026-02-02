@@ -83,7 +83,9 @@ input, textarea {
 }
 
 #app {
-  min-height: 100vh;
+  /* [WHY] 固定 100% 高度，配合 flex 布局让页面正确滚动 */
+  height: 100%;
+  overflow: hidden;
 }
 
 /* [WHY] 安全区域适配（iPhone X 及以上刘海屏） */

@@ -410,16 +410,22 @@ onMounted(() => {
 
 <style scoped>
 .market-page {
-  min-height: 100vh;
+  /* [WHY] 使用 100% 高度适配 flex 布局 */
+  height: 100%;
   background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .market-content {
-  /* [WHY] 固定高度才能让下拉刷新正常工作 */
-  height: calc(100vh - 46px);
+  /* [WHY] 使用 flex: 1 自动撑满剩余空间 */
+  flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
+  /* [WHY] Android WebView 需要明确的触摸行为 */
+  touch-action: pan-y;
 }
 
 /* [WHY] 底部占位确保最后一个元素可以滚动到可见区域 */

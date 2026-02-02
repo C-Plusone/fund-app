@@ -397,10 +397,13 @@ onMounted(async () => {
 
 <style scoped>
 .report-page {
-  min-height: 100vh;
+  height: 100%;
   background: var(--bg-primary);
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 /* 类型切换 */

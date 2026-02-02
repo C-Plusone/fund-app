@@ -1,5 +1,5 @@
 {
-  "version": "1.3.0",
+  "version": "1.4.0",
   "forceUpdate": false,
   "minVersion": "1.0.0",
   "announcements": [
@@ -13,12 +13,13 @@
       "endTime": "2027-12-31T23:59:59Z"
     }
   ],
-  "updateUrl": "https://hk.gh-proxy.org/https://github.com/xiriovo/fund-app/releases/download/v1.3.0/app-release.apk",
+  "updateUrl": "https://hk.gh-proxy.org/https://github.com/xiriovo/fund-app/releases/download/v1.4.0/app-release.apk",
   "links": {
     "github": "https://github.com/xiriovo/fund-app",
     "feedback": "https://github.com/xiriovo/fund-app/issues",
     "download123": "https://www.123865.com/s/Tfksjv-0rThd",
     "downloadLanzou": "https://wwbda.lanzn.com/ippf73hh019i",
-    "downloadLanzouPwd": "36mh"
+    "downloadLanzouPwd": "36mh",
+    "downloadGithub": "https://hk.gh-proxy.org/https://github.com/xiriovo/fund-app/releases/download/v1.4.0/app-release.apk"
   }
 }

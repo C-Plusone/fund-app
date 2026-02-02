@@ -309,10 +309,13 @@ const showTypePicker = ref(false)
 
 <style scoped>
 .filter-page {
-  min-height: 100vh;
+  height: 100%;
   background: var(--bg-primary);
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 /* 筛选栏 */

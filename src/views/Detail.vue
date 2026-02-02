@@ -972,8 +972,15 @@ function formatPercent(num: number): string {
 
 <style scoped>
 .detail-page {
-  min-height: 100vh;
+  /* [WHY] 使用 100% 高度适配 flex 布局 */
+  height: 100%;
   background: var(--bg-primary);
+  /* [WHY] 允许页面整体滚动 */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  /* [WHY] 底部留白给操作栏 */
   padding-bottom: 70px;
 }
 

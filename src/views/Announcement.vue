@@ -23,6 +23,16 @@ const activeTab = ref<'announcement' | 'update' | 'about'>('announcement')
 // [WHAT] 更新日志（本地维护）
 const updateLogs = [
   {
+    version: '1.4.0',
+    date: '2026-01-30',
+    changes: [
+      '修复：Android APP 页面滑动问题',
+      '优化：使用 Flex 布局重构页面滚动',
+      '优化：适配 Android WebView 触摸滚动',
+      '优化：统一所有页面的滚动行为',
+    ]
+  },
+  {
     version: '1.3.0',
     date: '2026-02-01',
     changes: [
@@ -287,8 +297,12 @@ function resetReadStatus() {
 
 <style scoped>
 .announcement-page {
-  min-height: 100vh;
+  /* [WHY] 使用 100% 高度适配 flex 布局 */
+  height: 100%;
   background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* 顶部导航 */
@@ -350,7 +364,15 @@ function resetReadStatus() {
 
 /* 内容区域 */
 .content-area {
+  /* [WHY] 使用 flex: 1 自动撑满剩余空间 */
+  flex: 1;
   padding: 12px;
+  padding-bottom: 20px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  /* [WHY] Android WebView 需要明确的触摸行为 */
+  touch-action: pan-y;
 }
 
 /* 公告列表 */

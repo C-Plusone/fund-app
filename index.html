@@ -33,16 +33,28 @@
       html, body {
         margin: 0;
         padding: 0;
+        /* [WHY] 固定高度，防止 Android WebView 滚动问题 */
+        height: 100%;
+        width: 100%;
         /* [WHY] 深色背景防止白色闪烁 */
         background: #0b0e11;
         /* [WHY] contain 允许组件内部下拉刷新，但防止页面整体橡皮筋效果 */
         overscroll-behavior-y: contain;
+        /* [WHY] 禁止页面整体滚动，由内部容器处理滚动 */
+        overflow: hidden;
+        /* [WHY] 确保触摸滚动正常工作 */
+        touch-action: pan-x pan-y;
       }
       
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        /* [WHY] 适配安全区域 */
-        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        /* [WHY] 安全区域只在需要的组件中处理，不在 body 上统一设置 */
+        /* 移除 padding: env(safe-area-inset-*) 避免 Android 兼容问题 */
+      }
+      
+      #app {
+        height: 100%;
+        overflow: hidden;
       }
       
       /* [WHY] 禁止长按选择 */

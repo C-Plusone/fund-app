@@ -461,8 +461,11 @@ const weekDays = ['日', '一', '二', '三', '四', '五', '六']
 
 <style scoped>
 .calendar-page {
-  min-height: 100vh;
+  height: 100%;
   background: var(--bg-primary);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 /* 月份切换 */

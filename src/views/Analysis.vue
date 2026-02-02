@@ -331,18 +331,25 @@ function goToTrades() {
 
 <style scoped>
 .analysis-page {
-  min-height: 100vh;
+  /* [WHY] 使用 100% 高度适配 flex 布局 */
+  height: 100%;
   background: var(--bg-primary);
-  padding-bottom: 60px;
   transition: background-color 0.3s;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .analysis-content {
-  /* [WHY] 固定高度才能让滚动和下拉刷新正常工作 */
-  height: calc(100vh - 46px);
+  /* [WHY] 使用 flex: 1 自动撑满剩余空间 */
+  flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
+  /* [WHY] Android WebView 需要明确的触摸行为 */
+  touch-action: pan-y;
+  /* [WHY] 底部留白确保内容不被遮挡 */
+  padding-bottom: 20px;
 }
 
 /* 总资产卡片 */

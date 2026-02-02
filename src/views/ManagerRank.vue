@@ -150,9 +150,12 @@ onMounted(loadManagers)
 
 <style scoped>
 .manager-rank-page {
-  min-height: 100vh;
+  height: 100%;
   background: var(--bg-primary);
   padding-bottom: env(safe-area-inset-bottom);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 /* 排序选项 */

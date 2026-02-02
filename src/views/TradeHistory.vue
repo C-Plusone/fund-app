@@ -381,10 +381,13 @@ function getTypeConfig(type: TradeType) {
 
 <style scoped>
 .trade-page {
-  min-height: 100vh;
+  height: 100%;
   background: var(--bg-primary);
   padding-bottom: 80px;
   transition: background-color 0.3s;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 /* 统计卡片 */

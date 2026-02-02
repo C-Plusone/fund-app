@@ -544,9 +544,13 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
 
 <style scoped>
 .holding-page {
-  min-height: 100vh;
+  /* [WHY] 使用 100% 高度适配 flex 布局 */
+  height: 100%;
   background: var(--bg-primary);
   transition: background-color 0.3s;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* 汇总卡片 */
@@ -606,11 +610,13 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
 
 /* 持仓列表 */
 .holding-list-container {
-  /* [WHY] 固定高度才能让滚动和下拉刷新正常工作 */
-  height: calc(100vh - 250px);
+  /* [WHY] 使用 flex: 1 自动撑满剩余空间 */
+  flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
+  /* [WHY] Android WebView 需要明确的触摸行为 */
+  touch-action: pan-y;
 }
 
 .holding-item {

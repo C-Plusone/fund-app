@@ -604,9 +604,12 @@ endDate.value = today.toISOString().split('T')[0]!
 
 <style scoped>
 .backtest-page {
-  min-height: 100vh;
+  height: 100%;
   background: var(--bg-primary);
   padding-bottom: env(safe-area-inset-bottom);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 /* 设置区域 */
