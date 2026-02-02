@@ -10,6 +10,7 @@ import { searchFund, fetchFundEstimate, detectShareClass, fetchFundFeeInfo, calc
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
 import { formatMoney, formatPercent, getChangeStatus } from '@/utils/format'
 import type { FundInfo, HoldingRecord, FundShareClass, FundFeeInfo } from '@/types/fund'
+import ScreenshotImport from '@/components/ScreenshotImport.vue'
 
 const router = useRouter()
 const holdingStore = useHoldingStore()
@@ -17,6 +18,9 @@ const holdingStore = useHoldingStore()
 // ========== 表单相关 ==========
 const showAddDialog = ref(false)
 const isEditing = ref(false)
+
+// ========== 截图导入相关 ==========
+const showImportDialog = ref(false)
 const formData = ref({
   code: '',
   name: '',
@@ -29,6 +33,8 @@ const shareClass = ref<FundShareClass>('A')
 const feeInfo = ref<FundFeeInfo | null>(null)
 // A类：是否扣除买入手续费
 const deductBuyFee = ref(true)
+// A类：自定义买入费率（默认1.5%）
+const customBuyFeeRate = ref('1.5')
 // C类：销售服务费年化费率（默认0.4%）
 const serviceFeeRate = ref(0.4)
 
@@ -192,11 +198,12 @@ async function selectFund(fund: FundInfo) {
 }
 
 // [WHAT] 计算买入手续费（仅A类）
+// [WHY] 使用用户自定义费率
+const buyFeeRate = computed(() => parseFloat(customBuyFeeRate.value) || 1.5)
 const buyFeeAmount = computed(() => {
   if (shareClass.value !== 'A' || !deductBuyFee.value) return 0
   const amount = parseFloat(formData.value.amount) || 0
-  const rate = feeInfo.value?.buyFeeRate || 0.15
-  const fee = amount * (rate / 100)
+  const fee = amount * (buyFeeRate.value / 100)
   return Math.round(fee * 100) / 100
 })
 
@@ -257,8 +264,8 @@ async function submitForm() {
     buyDate: formData.value.buyDate,
     holdingDays: calculatedDays.value,
     createdAt: Date.now(),
-    // A类基金费用字段
-    buyFeeRate: shareClass.value === 'A' ? (feeInfo.value?.buyFeeRate || 0.15) : undefined,
+    // A类基金费用字段（使用用户自定义费率）
+    buyFeeRate: shareClass.value === 'A' ? buyFeeRate.value : undefined,
     buyFeeDeducted: shareClass.value === 'A' ? deductBuyFee.value : undefined,
     buyFeeAmount: shareClass.value === 'A' ? buyFeeAmount.value : undefined,
     // C类基金费用字段
@@ -342,6 +349,12 @@ function goToDetail(code: string) {
   router.push(`/detail/${code}`)
 }
 
+// [WHAT] 截图导入完成回调
+function onImported(count: number) {
+  // [WHAT] 导入完成后刷新持仓列表
+  holdingStore.refreshEstimates()
+}
+
 // ========== 日期选择器 ==========
 const showDatePicker = ref(false)
 
@@ -359,7 +372,10 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
     <!-- 顶部导航栏 -->
     <van-nav-bar title="我的持仓" safe-area-inset-top>
       <template #right>
-        <van-icon name="add-o" size="20" @click="openAddDialog" />
+        <div class="nav-actions">
+          <van-icon name="photo-o" size="20" @click="showImportDialog = true" />
+          <van-icon name="add-o" size="20" @click="openAddDialog" />
+        </div>
       </template>
     </van-nav-bar>
 
@@ -448,6 +464,9 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
           添加持仓
         </van-button>
       </van-empty>
+      
+      <!-- 底部占位，避免被导航栏遮挡 -->
+      <div class="bottom-spacer"></div>
     </van-pull-refresh>
 
     <!-- 添加/编辑持仓弹窗 -->
@@ -535,7 +554,16 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
                   <van-checkbox v-model="deductBuyFee" shape="square">
                     从金额中扣除
                   </van-checkbox>
-                  <span class="fee-rate">费率 {{ feeInfo?.buyFeeRate || 0.15 }}%</span>
+                  <div class="fee-rate-input">
+                    <span>费率</span>
+                    <input 
+                      v-model="customBuyFeeRate" 
+                      type="number" 
+                      step="0.01"
+                      class="fee-input"
+                    />
+                    <span>%</span>
+                  </div>
                 </div>
               </template>
             </van-field>
@@ -660,6 +688,12 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
         </div>
       </div>
     </van-popup>
+
+    <!-- 截图导入弹窗 -->
+    <ScreenshotImport 
+      v-model:show="showImportDialog"
+      @imported="onImported"
+    />
   </div>
 </template>
 
@@ -672,6 +706,13 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* 导航栏右侧按钮 */
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 /* 汇总卡片 */
@@ -738,6 +779,12 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
   overscroll-behavior-y: contain;
   /* [WHY] Android WebView 需要明确的触摸行为 */
   touch-action: pan-y;
+}
+
+/* [WHY] 底部占位，确保最后一项不被底部导航栏遮挡 */
+.bottom-spacer {
+  height: calc(70px + env(safe-area-inset-bottom, 0px));
+  flex-shrink: 0;
 }
 
 .holding-item {
@@ -892,6 +939,25 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
 .fee-rate {
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+.fee-rate-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.fee-input {
+  width: 50px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: center;
 }
 
 .fee-tip {

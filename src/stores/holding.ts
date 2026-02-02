@@ -5,13 +5,13 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { HoldingRecord, HoldingSummary, FundEstimate } from '@/types/fund'
+import type { HoldingRecord, HoldingSummary } from '@/types/fund'
 import {
   getHoldings,
   upsertHolding,
   removeHolding as removeFromStorage
 } from '@/utils/storage'
-import { fetchFundEstimateFast } from '@/api/fundFast'
+import { fetchFundAccurateData, type FundAccurateData } from '@/api/fundFast'
 import { calculateDailyServiceFee } from '@/api/fund'
 
 /** 持仓项（包含实时估值和收益计算） */
@@ -94,10 +94,10 @@ export const useHoldingStore = defineStore('holding', () => {
 
   /**
    * 刷新所有持仓的估值和收益
+   * [WHAT] 使用综合数据获取函数，确保数据准确
    */
   async function refreshEstimates() {
     if (holdings.value.length === 0) {
-      // [EDGE] 没有持仓时也需要重置刷新状态
       isRefreshing.value = false
       return
     }
@@ -106,20 +106,17 @@ export const useHoldingStore = defineStore('holding', () => {
     const codes = holdings.value.map((h) => h.code)
 
     try {
-      // [WHAT] 并发请求所有基金估值
+      // [WHAT] 并发获取所有基金的准确数据
       const results = await Promise.all(
-        codes.map(code => fetchFundEstimateFast(code).catch(() => null))
+        codes.map(code => fetchFundAccurateData(code).catch(() => null))
       )
       
       results.forEach((data, index) => {
         if (data) {
-          updateHoldingWithEstimate(codes[index], data)
+          updateHoldingWithAccurateData(codes[index], data)
         } else {
-          // [EDGE] 请求失败时标记加载完成
           const item = holdings.value.find((h) => h.code === codes[index])
-          if (item) {
-            item.loading = false
-          }
+          if (item) item.loading = false
         }
       })
     } finally {
@@ -128,22 +125,17 @@ export const useHoldingStore = defineStore('holding', () => {
   }
 
   /**
-   * 更新单只持仓的估值和收益
-   * [WHAT] 根据实时估值计算市值和浮动盈亏
-   * [WHAT] 考虑 A类买入手续费和 C类销售服务费
+   * 使用准确数据更新持仓
+   * [WHAT] 接收多源验证后的准确数据，计算收益
    */
-  function updateHoldingWithEstimate(code: string, data: FundEstimate) {
+  function updateHoldingWithAccurateData(code: string, data: FundAccurateData) {
     const index = holdings.value.findIndex((h) => h.code === code)
     if (index === -1) return
 
     const holding = holdings.value[index]
-    const estimateValue = parseFloat(data.gsz) || 0
-    const lastValue = parseFloat(data.dwjz) || 0
+    const currentValue = data.currentValue
     
-    // [EDGE] 如果估值为0（非交易时间），使用昨收净值计算市值
-    const currentValue = estimateValue > 0 ? estimateValue : lastValue
-    
-    // [EDGE] 如果净值都无效，跳过计算
+    // [EDGE] 如果净值无效，跳过计算
     if (currentValue <= 0) {
       holdings.value[index] = {
         ...holding,
@@ -153,10 +145,9 @@ export const useHoldingStore = defineStore('holding', () => {
       return
     }
     
-    // [EDGE] 如果份额无效或为0，根据买入金额和当前净值重新计算
+    // [EDGE] 如果份额无效，重新计算
     let shares = holding.shares
     if (!shares || shares <= 0) {
-      // 使用买入净值计算，如果买入净值也无效则用当前净值
       const buyNav = holding.buyNetValue > 0 ? holding.buyNetValue : currentValue
       shares = holding.amount / buyNav
     }
@@ -164,12 +155,9 @@ export const useHoldingStore = defineStore('holding', () => {
     // [WHAT] 计算市值
     const marketValue = shares * currentValue
     
-    // [WHAT] 计算成本（考虑 A类手续费）
-    let cost = holding.amount
-    // C类：计算累计销售服务费
+    // [WHAT] C类累计销售服务费
     let totalServiceFee = 0
     if (holding.shareClass === 'C' && holding.serviceFeeRate) {
-      // [WHAT] 计算从买入日到现在的累计销售服务费
       const days = holding.holdingDays || 0
       if (days > 0) {
         const dailyFee = calculateDailyServiceFee(shares, currentValue, holding.serviceFeeRate)
@@ -177,26 +165,22 @@ export const useHoldingStore = defineStore('holding', () => {
       }
     }
     
-    // [WHAT] 计算收益（C类需要扣除累计服务费）
-    const profit = marketValue - cost - totalServiceFee
-    const profitRate = cost > 0 ? (profit / cost) * 100 : 0
+    // [WHAT] 计算收益
+    const profit = marketValue - holding.amount - totalServiceFee
+    const profitRate = holding.amount > 0 ? (profit / holding.amount) * 100 : 0
     
-    // [WHAT] 计算当日收益 = 持有份额 × (当前估值 - 昨日净值) - 当日服务费
-    // [WHY] 如果今天休市（估值时间不是今天），当日收益应该为 0
+    // [WHAT] 计算当日收益
     let todayProfit = 0
-    const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
-    const gzDate = data.gztime?.split(' ')[0] || '' // 从 "2024-01-01 15:00" 提取日期
-    const isTradingDay = gzDate === today
-    
-    if (isTradingDay) {
-      // [WHAT] 今天是交易日，正常计算当日收益
-      todayProfit = shares * (currentValue - lastValue)
+    if (data.dayChange !== 0) {
+      const prevNav = currentValue / (1 + data.dayChange / 100)
+      todayProfit = shares * (currentValue - prevNav)
+      
+      // C类扣除当日服务费
       if (holding.shareClass === 'C' && holding.serviceFeeRate) {
         const dailyFee = calculateDailyServiceFee(shares, currentValue, holding.serviceFeeRate)
         todayProfit -= dailyFee
       }
     }
-    // [ELSE] 休市日当日收益为 0，不计算
 
     holdings.value[index] = {
       ...holding,
@@ -205,13 +189,10 @@ export const useHoldingStore = defineStore('holding', () => {
       marketValue,
       profit,
       profitRate,
-      // [WHY] 休市日当日涨跌幅显示为 0
-      todayChange: isTradingDay ? data.gszzl : '0.00',
+      todayChange: data.dayChange.toFixed(2),
       todayProfit,
       loading: false,
-      // [WHAT] 更新份额（如果原来无效）
-      shares: shares,
-      // [WHAT] 更新 C类累计服务费
+      shares,
       serviceFeeDeducted: holding.shareClass === 'C' ? totalServiceFee : undefined
     }
   }

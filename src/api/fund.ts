@@ -761,15 +761,44 @@ export async function fetchTimeShareData(code: string): Promise<TimeShareData[]>
  * @param name 基金名称
  */
 export function detectShareClass(code: string, name: string): FundShareClass {
-  // [WHAT] C类基金通常代码结尾为奇数，或名称包含C
+  // [WHAT] 检测基金份额类型（A类前端收费，C类按日计提服务费）
+  // [WHY] 增强识别逻辑，覆盖更多命名格式
+  
   const nameLower = name.toLowerCase()
-  if (nameLower.includes('c类') || nameLower.endsWith('c') || nameLower.includes('(c)')) {
+  const nameUpper = name.toUpperCase()
+  
+  // [WHAT] C类识别规则（优先级高）
+  // 1. 名称包含 "C类"、"C份额"
+  // 2. 名称以 "C" 结尾（如 "华安黄金ETF联接C"）
+  // 3. 名称包含 "(C)"、"（C）"、"-C"、"_C"
+  if (
+    nameLower.includes('c类') || 
+    nameLower.includes('c份额') ||
+    nameUpper.endsWith('C') ||
+    nameLower.includes('(c)') ||
+    name.includes('（C）') ||
+    name.includes('（c）') ||
+    nameUpper.includes('-C') ||
+    nameUpper.includes('_C')
+  ) {
     return 'C'
   }
-  if (nameLower.includes('a类') || nameLower.endsWith('a') || nameLower.includes('(a)')) {
+  
+  // [WHAT] A类识别规则
+  if (
+    nameLower.includes('a类') || 
+    nameLower.includes('a份额') ||
+    nameUpper.endsWith('A') ||
+    nameLower.includes('(a)') ||
+    name.includes('（A）') ||
+    name.includes('（a）') ||
+    nameUpper.includes('-A') ||
+    nameUpper.includes('_A')
+  ) {
     return 'A'
   }
-  // [EDGE] 无法判断时默认为A类
+  
+  // [EDGE] 无法判断时默认为A类（大多数基金默认为A类）
   return 'A'
 }
 

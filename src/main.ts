@@ -26,6 +26,10 @@ app.use(router)
 
 app.mount('#app')
 
+// [WHAT] 检查版本并清除旧缓存
+import { checkVersionAndClearCache } from './utils/storage'
+checkVersionAndClearCache()
+
 // [WHAT] 初始化主题
 import { useThemeStore } from './stores/theme'
 const themeStore = useThemeStore()

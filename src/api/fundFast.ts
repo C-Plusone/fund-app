@@ -264,6 +264,203 @@ export async function fetchNetValueHistoryFast(code: string, days = 30): Promise
   })
 }
 
+/**
+ * 获取基金最新公布净值（非估值）
+ * [WHY] 估值接口返回的是预估值，这个接口返回基金公司实际公布的净值
+ * [WHAT] 从东方财富历史净值接口获取最新一条记录
+ */
+export async function fetchLatestNetValue(code: string): Promise<{
+  netValue: number
+  date: string
+  changeRate: number
+} | null> {
+  const cacheKey = `latest_nav_${code}`
+  const cached = cache.get<{ netValue: number; date: string; changeRate: number }>(cacheKey)
+  if (cached) return cached
+  
+  return new Promise((resolve) => {
+    const callbackName = `ltnav_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const timeout = setTimeout(() => {
+      cleanup()
+      resolve(null)
+    }, 10000)
+
+    ;(window as any)[callbackName] = (data: any) => {
+      cleanup()
+      if (!data || !data.Data || !data.Data.LSJZList || data.Data.LSJZList.length === 0) {
+        resolve(null)
+        return
+      }
+      
+      // [WHAT] 获取最新一条净值记录
+      const latest = data.Data.LSJZList[0]
+      const result = {
+        netValue: parseFloat(latest.DWJZ) || 0,
+        date: latest.FSRQ || '',
+        changeRate: parseFloat(latest.JZZZL) || 0
+      }
+      
+      // [WHAT] 缓存5分钟
+      cache.set(cacheKey, result, CACHE_TTL.FUND_DETAIL)
+      resolve(result)
+    }
+
+    function cleanup() {
+      clearTimeout(timeout)
+      delete (window as any)[callbackName]
+      const script = document.getElementById(callbackName)
+      if (script) document.body.removeChild(script)
+    }
+
+    const script = document.createElement('script')
+    script.id = callbackName
+    // [DEPS] 东方财富历史净值接口，只获取1条
+    script.src = `https://api.fund.eastmoney.com/f10/lsjz?callback=${callbackName}&fundCode=${code}&pageIndex=1&pageSize=1&_=${Date.now()}`
+    script.onerror = () => {
+      cleanup()
+      resolve(null)
+    }
+    document.body.appendChild(script)
+  })
+}
+
+// ========== 综合数据获取（多源验证） ==========
+
+/**
+ * 基金综合数据（多源验证后的准确数据）
+ */
+export interface FundAccurateData {
+  code: string
+  name: string
+  // 公布净值（基金公司官方，最准确）
+  nav: number
+  navDate: string
+  navChange: number
+  // 估算净值（交易时间内参考）
+  estimate: number
+  estimateTime: string
+  estimateChange: number
+  // 推荐使用值（自动选择最准确的）
+  currentValue: number
+  dayChange: number
+  // 数据源状态
+  dataSource: 'nav' | 'estimate' | 'fallback'
+  updateTime: string
+}
+
+/**
+ * 获取基金准确数据（多源验证）
+ * [WHY] 同时从估值和净值接口获取，交叉验证确保准确
+ * [WHAT] 优先使用公布净值（收盘后），交易时间内使用估值
+ */
+export async function fetchFundAccurateData(code: string): Promise<FundAccurateData> {
+  const cacheKey = `accurate_${code}`
+  const cached = cache.get<FundAccurateData>(cacheKey)
+  if (cached) return cached
+  
+  // [WHAT] 并发获取多个数据源
+  const [estimateData, navData] = await Promise.all([
+    fetchFundEstimateFast(code).catch(() => null),
+    fetchLatestNetValue(code).catch(() => null)
+  ])
+  
+  const now = new Date()
+  const today = now.toISOString().split('T')[0]
+  const currentHour = now.getHours()
+  const currentMinute = now.getMinutes()
+  
+  // [WHAT] 判断是否在交易时间
+  const isWeekday = now.getDay() >= 1 && now.getDay() <= 5
+  const isTradingHours = (currentHour === 9 && currentMinute >= 30) || 
+    (currentHour > 9 && currentHour < 11) ||
+    (currentHour === 11 && currentMinute <= 30) ||
+    (currentHour >= 13 && currentHour < 15)
+  const inTradingTime = isWeekday && isTradingHours
+  
+  // [WHAT] 构建结果
+  const result: FundAccurateData = {
+    code,
+    name: estimateData?.name || '',
+    nav: navData?.netValue || 0,
+    navDate: navData?.date || '',
+    navChange: navData?.changeRate || 0,
+    estimate: parseFloat(estimateData?.gsz || '0') || 0,
+    estimateTime: estimateData?.gztime || '',
+    estimateChange: parseFloat(estimateData?.gszzl || '0') || 0,
+    currentValue: 0,
+    dayChange: 0,
+    dataSource: 'fallback',
+    updateTime: now.toISOString()
+  }
+  
+  // [WHAT] 智能选择最准确的数据
+  // 场景1: 收盘后且有今日净值 -> 使用公布净值
+  // 场景2: 交易时间内 -> 使用估值
+  // 场景3: 非交易时间且无今日净值 -> 使用最新公布净值
+  
+  const isNavFromToday = navData?.date === today
+  const isEstimateFromToday = estimateData?.gztime?.startsWith(today.replace(/-/g, '-'))
+  
+  if (isNavFromToday && result.nav > 0) {
+    // [WHAT] 今日净值已公布（收盘后），最准确
+    result.currentValue = result.nav
+    result.dayChange = result.navChange
+    result.dataSource = 'nav'
+  } else if (inTradingTime && result.estimate > 0) {
+    // [WHAT] 交易时间内，使用估值
+    result.currentValue = result.estimate
+    result.dayChange = result.estimateChange
+    result.dataSource = 'estimate'
+  } else if (result.estimate > 0 && isEstimateFromToday) {
+    // [WHAT] 非交易时间但有今日估值（午休或收盘后净值未公布）
+    result.currentValue = result.estimate
+    result.dayChange = result.estimateChange
+    result.dataSource = 'estimate'
+  } else if (result.nav > 0) {
+    // [WHAT] 使用最新公布净值（可能是昨天的）
+    result.currentValue = result.nav
+    result.dayChange = result.navChange
+    result.dataSource = 'nav'
+  } else if (result.estimate > 0) {
+    // [WHAT] 只有估值可用
+    result.currentValue = result.estimate
+    result.dayChange = result.estimateChange
+    result.dataSource = 'estimate'
+  } else {
+    // [EDGE] 无数据可用，使用昨日净值
+    const dwjz = parseFloat(estimateData?.dwjz || '0')
+    if (dwjz > 0) {
+      result.currentValue = dwjz
+      result.dayChange = 0
+      result.dataSource = 'fallback'
+    }
+  }
+  
+  // [WHAT] 缓存30秒（交易时间内）或5分钟（非交易时间）
+  const ttl = inTradingTime ? 30000 : 300000
+  cache.set(cacheKey, result, ttl)
+  
+  return result
+}
+
+/**
+ * 批量获取准确数据
+ */
+export async function fetchFundAccurateBatch(codes: string[]): Promise<Map<string, FundAccurateData>> {
+  const results = new Map<string, FundAccurateData>()
+  
+  await Promise.all(codes.map(async code => {
+    try {
+      const data = await fetchFundAccurateData(code)
+      results.set(code, data)
+    } catch {
+      // 静默失败
+    }
+  }))
+  
+  return results
+}
+
 // ========== K线数据（简化版，不需要复杂的OHLC模拟） ==========
 
 export interface SimpleKLineData {

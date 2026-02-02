@@ -7,20 +7,73 @@ import { cache, CACHE_TTL } from './cache'
 // ========== 交易时间和持久化缓存工具 ==========
 
 /**
- * 判断当前是否在交易时间内
- * [WHY] 开盘前使用缓存数据，开盘后获取实时数据
+ * 交易时段枚举
  */
-export function isTradingTime(): boolean {
+export type TradingSession = 'morning' | 'noon_break' | 'afternoon' | 'closed'
+
+/**
+ * 获取当前交易时段
+ * [WHY] 区分上午盘、午休、下午盘、休市，用于精确控制数据刷新策略
+ * [WHAT] 上午盘 9:30-11:30，午休 11:30-13:00，下午盘 13:00-15:00
+ */
+export function getTradingSession(): TradingSession {
   const now = new Date()
   const hour = now.getHours()
   const minute = now.getMinutes()
   const day = now.getDay()
+  const timeMinutes = hour * 60 + minute // 当前时间转换为分钟数
   
-  // [WHAT] 周一到周五，9:30-15:00 为交易时间
-  const isWeekday = day >= 1 && day <= 5
-  const isMarketOpen = (hour > 9 || (hour === 9 && minute >= 30)) && hour < 15
+  // [WHAT] 周末休市
+  if (day === 0 || day === 6) return 'closed'
   
-  return isWeekday && isMarketOpen
+  // [WHAT] 上午盘：9:30 - 11:30 (570 - 690分钟)
+  if (timeMinutes >= 570 && timeMinutes < 690) return 'morning'
+  
+  // [WHAT] 午休：11:30 - 13:00 (690 - 780分钟)
+  if (timeMinutes >= 690 && timeMinutes < 780) return 'noon_break'
+  
+  // [WHAT] 下午盘：13:00 - 15:00 (780 - 900分钟)
+  if (timeMinutes >= 780 && timeMinutes < 900) return 'afternoon'
+  
+  // [WHAT] 其他时间休市
+  return 'closed'
+}
+
+/**
+ * 判断当前是否在交易时间内
+ * [WHY] 开盘前使用缓存数据，开盘后获取实时数据
+ * [WHAT] 上午盘 9:30-11:30，下午盘 13:00-15:00
+ */
+export function isTradingTime(): boolean {
+  const session = getTradingSession()
+  return session === 'morning' || session === 'afternoon'
+}
+
+/**
+ * 判断当前是否为交易日的交易时段（包括午休）
+ * [WHY] 用于判断今天是否已开盘，即使在午休时间也算"今天已开盘"
+ */
+export function isTradingDay(): boolean {
+  const session = getTradingSession()
+  return session !== 'closed'
+}
+
+/**
+ * 判断今天是否已经开过盘（用于判断数据是否需要刷新）
+ * [WHY] 9:30后即使午休也认为今天已开盘，应该用今天的数据
+ */
+export function hasMarketOpenedToday(): boolean {
+  const now = new Date()
+  const hour = now.getHours()
+  const minute = now.getMinutes()
+  const day = now.getDay()
+  const timeMinutes = hour * 60 + minute
+  
+  // [WHAT] 周末不算开盘
+  if (day === 0 || day === 6) return false
+  
+  // [WHAT] 9:30 后算开盘（包括收盘后到24点）
+  return timeMinutes >= 570
 }
 
 /**
@@ -1688,5 +1741,323 @@ export async function fetchFundScale(fundCode: string): Promise<FundScale> {
   } catch (error) {
     console.error('[API] 获取基金规模失败:', error)
     return defaultScale
+  }
+}
+
+// ========== 基金风格分析 API ==========
+
+/**
+ * 基金风格类型
+ * [WHAT] 九宫格风格分类：大盘/中盘/小盘 × 价值/平衡/成长
+ */
+export interface FundStyle {
+  /** 市值风格：大盘/中盘/小盘 */
+  marketCap: 'large' | 'mid' | 'small' | 'unknown'
+  /** 投资风格：价值/平衡/成长 */
+  investStyle: 'value' | 'blend' | 'growth' | 'unknown'
+  /** 风格标签文字 */
+  styleLabel: string
+  /** 股票仓位 */
+  stockRatio: number
+  /** 债券仓位 */
+  bondRatio: number
+  /** 现金仓位 */
+  cashRatio: number
+}
+
+/**
+ * 获取基金风格分析
+ * [WHY] 了解基金的投资风格，辅助资产配置决策
+ */
+export async function fetchFundStyle(fundCode: string): Promise<FundStyle> {
+  const cacheKey = `style_${fundCode}`
+  const cached = cache.get<FundStyle>(cacheKey)
+  if (cached) return cached
+  
+  const defaultStyle: FundStyle = {
+    marketCap: 'unknown',
+    investStyle: 'unknown',
+    styleLabel: '未知',
+    stockRatio: 0,
+    bondRatio: 0,
+    cashRatio: 0
+  }
+  
+  try {
+    // [WHAT] 从天天基金获取基金风格数据
+    const url = `https://fund.eastmoney.com/pingzhongdata/${fundCode}.js?v=${Date.now()}`
+    const response = await fetch(url)
+    const text = await response.text()
+    
+    // [WHAT] 解析资产配置数据
+    // 格式：var Data_assetAllocation = {...}
+    const assetMatch = text.match(/var\s+Data_assetAllocation\s*=\s*(\{[\s\S]*?\});/)
+    if (assetMatch) {
+      const assetData = JSON.parse(assetMatch[1])
+      // [WHAT] 获取最新一期的资产配置
+      if (assetData.categories && assetData.series) {
+        const latest = assetData.series.length - 1
+        if (latest >= 0) {
+          defaultStyle.stockRatio = assetData.series[0]?.data?.[latest] || 0
+          defaultStyle.bondRatio = assetData.series[1]?.data?.[latest] || 0
+          defaultStyle.cashRatio = assetData.series[2]?.data?.[latest] || 0
+        }
+      }
+    }
+    
+    // [WHAT] 解析风格数据
+    // 格式：var swithSameType = [...]
+    const styleMatch = text.match(/var\s+swithSameType\s*=\s*(\[[\s\S]*?\]);/)
+    if (styleMatch) {
+      try {
+        const styleData = JSON.parse(styleMatch[1])
+        // [WHAT] 根据同类基金分类判断风格
+        for (const item of styleData) {
+          if (item[0] && typeof item[0] === 'string') {
+            const name = item[0]
+            // 判断市值风格
+            if (name.includes('大盘')) defaultStyle.marketCap = 'large'
+            else if (name.includes('中盘')) defaultStyle.marketCap = 'mid'
+            else if (name.includes('小盘')) defaultStyle.marketCap = 'small'
+            // 判断投资风格
+            if (name.includes('价值')) defaultStyle.investStyle = 'value'
+            else if (name.includes('成长')) defaultStyle.investStyle = 'growth'
+            else if (name.includes('平衡')) defaultStyle.investStyle = 'blend'
+          }
+        }
+      } catch {}
+    }
+    
+    // [WHAT] 生成风格标签
+    const capLabels = { large: '大盘', mid: '中盘', small: '小盘', unknown: '' }
+    const investLabels = { value: '价值', blend: '平衡', growth: '成长', unknown: '' }
+    defaultStyle.styleLabel = `${capLabels[defaultStyle.marketCap]}${investLabels[defaultStyle.investStyle]}`.trim() || '综合'
+    
+    cache.set(cacheKey, defaultStyle, CACHE_TTL.LONG)
+    return defaultStyle
+  } catch (error) {
+    console.error('[API] 获取基金风格失败:', error)
+    return defaultStyle
+  }
+}
+
+// ========== 指数估值 API ==========
+
+/**
+ * 指数估值信息
+ */
+export interface IndexValuation {
+  /** 指数代码 */
+  code: string
+  /** 指数名称 */
+  name: string
+  /** 当前PE */
+  pe: number
+  /** PE百分位（历史分位数） */
+  pePercentile: number
+  /** 当前PB */
+  pb: number
+  /** PB百分位 */
+  pbPercentile: number
+  /** 股息率 */
+  dividendYield: number
+  /** 估值状态：低估/正常/高估 */
+  status: 'undervalued' | 'normal' | 'overvalued'
+  /** 更新日期 */
+  updateDate: string
+}
+
+/**
+ * 获取主要指数估值
+ * [WHY] 指数估值是判断市场位置的重要参考
+ */
+export async function fetchIndexValuations(): Promise<IndexValuation[]> {
+  const cacheKey = 'index_valuations'
+  const cached = cache.get<IndexValuation[]>(cacheKey)
+  if (cached) return cached
+  
+  // [WHAT] 常见指数的默认估值数据（作为兜底）
+  const defaultData: IndexValuation[] = [
+    { code: '000300', name: '沪深300', pe: 12.5, pePercentile: 35, pb: 1.4, pbPercentile: 25, dividendYield: 2.8, status: 'normal', updateDate: '--' },
+    { code: '000905', name: '中证500', pe: 22.0, pePercentile: 40, pb: 1.8, pbPercentile: 30, dividendYield: 1.5, status: 'normal', updateDate: '--' },
+    { code: '000016', name: '上证50', pe: 10.5, pePercentile: 30, pb: 1.2, pbPercentile: 20, dividendYield: 3.2, status: 'undervalued', updateDate: '--' },
+    { code: '399006', name: '创业板指', pe: 35.0, pePercentile: 45, pb: 4.5, pbPercentile: 40, dividendYield: 0.5, status: 'normal', updateDate: '--' },
+    { code: '000922', name: '中证红利', pe: 6.5, pePercentile: 15, pb: 0.8, pbPercentile: 10, dividendYield: 5.5, status: 'undervalued', updateDate: '--' },
+  ]
+  
+  try {
+    // [WHAT] 尝试从乐估API获取实时估值数据
+    const url = 'https://legulegu.com/api/stockdata/index-valuations'
+    const response = await fetch(url, { mode: 'cors' }).catch(() => null)
+    
+    if (response && response.ok) {
+      const data = await response.json()
+      if (Array.isArray(data) && data.length > 0) {
+        const result = data.map((item: Record<string, unknown>) => ({
+          code: String(item.code || ''),
+          name: String(item.name || ''),
+          pe: Number(item.pe) || 0,
+          pePercentile: Number(item.pe_percentile) || 50,
+          pb: Number(item.pb) || 0,
+          pbPercentile: Number(item.pb_percentile) || 50,
+          dividendYield: Number(item.dividend_yield) || 0,
+          status: getValuationStatus(Number(item.pe_percentile) || 50),
+          updateDate: String(item.date || new Date().toISOString().split('T')[0])
+        }))
+        cache.set(cacheKey, result, CACHE_TTL.LONG)
+        return result
+      }
+    }
+    
+    // [EDGE] API不可用时返回默认数据
+    cache.set(cacheKey, defaultData, CACHE_TTL.LONG)
+    return defaultData
+  } catch (error) {
+    console.error('[API] 获取指数估值失败:', error)
+    return defaultData
+  }
+}
+
+/**
+ * 根据百分位判断估值状态
+ */
+function getValuationStatus(percentile: number): 'undervalued' | 'normal' | 'overvalued' {
+  if (percentile <= 30) return 'undervalued'
+  if (percentile >= 70) return 'overvalued'
+  return 'normal'
+}
+
+// ========== 持有人结构 API ==========
+
+/**
+ * 持有人结构信息
+ */
+export interface HolderStructure {
+  /** 机构持有比例(%) */
+  institutionRatio: number
+  /** 个人持有比例(%) */
+  personalRatio: number
+  /** 内部持有比例(%) */
+  internalRatio: number
+  /** 持有人户数 */
+  holderCount: number
+  /** 户均持有金额(元) */
+  avgHolding: number
+  /** 报告日期 */
+  reportDate: string
+}
+
+/**
+ * 获取基金持有人结构
+ * [WHY] 机构持有比例高可能说明基金受专业投资者认可
+ */
+export async function fetchHolderStructure(fundCode: string): Promise<HolderStructure> {
+  const cacheKey = `holder_${fundCode}`
+  const cached = cache.get<HolderStructure>(cacheKey)
+  if (cached) return cached
+  
+  const defaultData: HolderStructure = {
+    institutionRatio: 0,
+    personalRatio: 100,
+    internalRatio: 0,
+    holderCount: 0,
+    avgHolding: 0,
+    reportDate: '--'
+  }
+  
+  try {
+    // [WHAT] 从天天基金获取持有人结构
+    const url = `https://fund.eastmoney.com/pingzhongdata/${fundCode}.js?v=${Date.now()}`
+    const response = await fetch(url)
+    const text = await response.text()
+    
+    // [WHAT] 解析持有人结构数据
+    // 格式：var Data_holderStructure = {...}
+    const match = text.match(/var\s+Data_holderStructure\s*=\s*(\{[\s\S]*?\});/)
+    if (match) {
+      const data = JSON.parse(match[1])
+      if (data.series && data.categories) {
+        const latestIdx = data.categories.length - 1
+        if (latestIdx >= 0) {
+          defaultData.reportDate = data.categories[latestIdx] || '--'
+          // series[0] 机构, series[1] 个人, series[2] 内部
+          defaultData.institutionRatio = data.series[0]?.data?.[latestIdx] || 0
+          defaultData.personalRatio = data.series[1]?.data?.[latestIdx] || 100
+          defaultData.internalRatio = data.series[2]?.data?.[latestIdx] || 0
+        }
+      }
+    }
+    
+    cache.set(cacheKey, defaultData, CACHE_TTL.LONG)
+    return defaultData
+  } catch (error) {
+    console.error('[API] 获取持有人结构失败:', error)
+    return defaultData
+  }
+}
+
+// ========== 基金业绩排名 API ==========
+
+/**
+ * 同类排名信息
+ */
+export interface FundRankInfo {
+  /** 近1周排名 */
+  rank1w: { rank: number; total: number; percentile: number }
+  /** 近1月排名 */
+  rank1m: { rank: number; total: number; percentile: number }
+  /** 近3月排名 */
+  rank3m: { rank: number; total: number; percentile: number }
+  /** 近6月排名 */
+  rank6m: { rank: number; total: number; percentile: number }
+  /** 近1年排名 */
+  rank1y: { rank: number; total: number; percentile: number }
+  /** 成立以来排名 */
+  rankTotal: { rank: number; total: number; percentile: number }
+}
+
+/**
+ * 获取基金同类排名
+ * [WHY] 排名是评估基金业绩的重要指标
+ */
+export async function fetchFundRankInfo(fundCode: string): Promise<FundRankInfo | null> {
+  const cacheKey = `rankinfo_${fundCode}`
+  const cached = cache.get<FundRankInfo>(cacheKey)
+  if (cached) return cached
+  
+  try {
+    const url = `https://fund.eastmoney.com/pingzhongdata/${fundCode}.js?v=${Date.now()}`
+    const response = await fetch(url)
+    const text = await response.text()
+    
+    // [WHAT] 解析同类排名数据
+    // 格式：var Data_rateInSimilarType = [...]
+    const match = text.match(/var\s+Data_rateInSimilarType\s*=\s*(\[[\s\S]*?\]);/)
+    if (!match) return null
+    
+    const data = JSON.parse(match[1])
+    
+    const parseRank = (item: [string, number, number] | undefined) => {
+      if (!item) return { rank: 0, total: 0, percentile: 0 }
+      const rank = item[1] || 0
+      const total = item[2] || 1
+      const percentile = Math.round((1 - rank / total) * 100)
+      return { rank, total, percentile }
+    }
+    
+    const result: FundRankInfo = {
+      rank1w: parseRank(data[0]),
+      rank1m: parseRank(data[1]),
+      rank3m: parseRank(data[2]),
+      rank6m: parseRank(data[3]),
+      rank1y: parseRank(data[4]),
+      rankTotal: parseRank(data[5])
+    }
+    
+    cache.set(cacheKey, result, CACHE_TTL.FUND_INFO)
+    return result
+  } catch (error) {
+    console.error('[API] 获取基金排名失败:', error)
+    return null
   }
 }

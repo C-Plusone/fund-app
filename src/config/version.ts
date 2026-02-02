@@ -5,7 +5,7 @@
  */
 
 /** 当前应用版本号 */
-export const APP_VERSION = '1.5.0'
+export const APP_VERSION = '1.7.0'
 
 /** 应用名称 */
 export const APP_NAME = '基金宝'

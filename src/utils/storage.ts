@@ -1,10 +1,48 @@
 // [WHY] 封装 localStorage 操作，提供类型安全的数据持久化
 // [WHAT] 自选列表、持仓数据等需要在 APP 重启后保留
 
+import { APP_VERSION } from '@/config/version'
+import { cache } from '@/api/cache'
+
 const STORAGE_KEYS = {
   WATCHLIST: 'fund_watchlist',
-  HOLDINGS: 'fund_holdings'
+  HOLDINGS: 'fund_holdings',
+  APP_VERSION: 'app_version',
+  // [WHAT] 需要在版本更新时清除的缓存 key 前缀
+  CACHE_PREFIXES: ['fund_', 'api_', 'market_', 'estimate_']
 } as const
+
+/**
+ * 检查版本并清除旧缓存
+ * [WHY] APP 更新后需要清除旧缓存，确保使用最新数据
+ * [WHAT] 比较存储的版本与当前版本，不同则清除 API 缓存
+ */
+export function checkVersionAndClearCache(): void {
+  const storedVersion = localStorage.getItem(STORAGE_KEYS.APP_VERSION)
+  
+  if (storedVersion !== APP_VERSION) {
+    console.log(`[版本更新] ${storedVersion || '首次安装'} -> ${APP_VERSION}，清除缓存`)
+    
+    // [WHAT] 清除内存缓存
+    cache.clear()
+    
+    // [WHAT] 清除 localStorage 中的 API 缓存（保留用户数据）
+    const keysToRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && STORAGE_KEYS.CACHE_PREFIXES.some(prefix => key.startsWith(prefix))) {
+        // [WHAT] 不清除自选和持仓数据
+        if (key !== STORAGE_KEYS.WATCHLIST && key !== STORAGE_KEYS.HOLDINGS) {
+          keysToRemove.push(key)
+        }
+      }
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key))
+    
+    // [WHAT] 更新版本号
+    localStorage.setItem(STORAGE_KEYS.APP_VERSION, APP_VERSION)
+  }
+}
 
 /**
  * 通用存储读取函数
