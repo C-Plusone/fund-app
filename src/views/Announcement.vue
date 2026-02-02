@@ -24,7 +24,7 @@ const activeTab = ref<'announcement' | 'update' | 'about'>('announcement')
 const updateLogs = [
   {
     version: '1.5.0',
-    date: '2026-01-30',
+    date: '2026-02-02',
     changes: [
       '新增：持仓成本调整功能',
       '新增：支持分红再投、补仓摊薄等场景',
@@ -34,7 +34,7 @@ const updateLogs = [
   },
   {
     version: '1.4.0',
-    date: '2026-01-30',
+    date: '2026-02-02',
     changes: [
       '修复：Android APP 页面滑动问题',
       '优化：使用 Flex 布局重构页面滚动',
