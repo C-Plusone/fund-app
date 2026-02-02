@@ -39,6 +39,15 @@ const isSearching = ref(false)
 const selectedFund = ref<FundInfo | null>(null)
 const currentNetValue = ref(0) // 当前基金净值
 
+// ========== 调整成本相关 ==========
+const showCostDialog = ref(false)
+const costFormData = ref({
+  code: '',
+  name: '',
+  amount: '', // 新的成本金额
+  shares: ''  // 份额（可选修改）
+})
+
 // [WHAT] 页面挂载时初始化数据
 onMounted(() => {
   holdingStore.initHoldings()
@@ -264,6 +273,65 @@ async function submitForm() {
   resetForm()
 }
 
+// ========== 调整成本功能 ==========
+
+// [WHAT] 打开调整成本弹窗
+function openCostDialog(code: string) {
+  const holding = holdingStore.getHoldingByCode(code)
+  if (!holding) return
+  
+  costFormData.value = {
+    code: holding.code,
+    name: holding.name,
+    amount: holding.amount.toString(),
+    shares: holding.shares.toFixed(2)
+  }
+  showCostDialog.value = true
+}
+
+// [WHAT] 提交调整成本
+async function submitCostAdjust() {
+  const amount = parseFloat(costFormData.value.amount)
+  const shares = parseFloat(costFormData.value.shares)
+  
+  if (!amount || amount <= 0) {
+    showToast('请输入有效的成本金额')
+    return
+  }
+  if (!shares || shares <= 0) {
+    showToast('请输入有效的份额')
+    return
+  }
+  
+  const holding = holdingStore.getHoldingByCode(costFormData.value.code)
+  if (!holding) return
+  
+  // [WHAT] 构建更新后的持仓记录，保留原有的其他字段
+  const record: HoldingRecord = {
+    code: holding.code,
+    name: holding.name,
+    shareClass: holding.shareClass,
+    amount: amount,
+    // [WHY] 根据新的成本和份额计算买入净值
+    buyNetValue: amount / shares,
+    shares: shares,
+    buyDate: holding.buyDate,
+    holdingDays: holding.holdingDays,
+    createdAt: holding.createdAt,
+    // 保留费用相关字段
+    buyFeeRate: holding.buyFeeRate,
+    buyFeeDeducted: holding.buyFeeDeducted,
+    buyFeeAmount: holding.buyFeeAmount,
+    serviceFeeRate: holding.serviceFeeRate,
+    serviceFeeDeducted: holding.serviceFeeDeducted,
+    lastFeeDate: holding.lastFeeDate
+  }
+  
+  await holdingStore.addOrUpdateHolding(record)
+  showToast('成本调整成功')
+  showCostDialog.value = false
+}
+
 // [WHAT] 跳转到首页
 function goHome() {
   router.push('/')
@@ -289,7 +357,7 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
 <template>
   <div class="holding-page">
     <!-- 顶部导航栏 -->
-    <van-nav-bar title="我的持仓">
+    <van-nav-bar title="我的持仓" safe-area-inset-top>
       <template #right>
         <van-icon name="add-o" size="20" @click="openAddDialog" />
       </template>
@@ -367,6 +435,7 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
           
           <!-- 滑动操作按钮 -->
           <template #right>
+            <van-button square type="warning" text="调整" class="action-btn" @click="openCostDialog(holding.code)" />
             <van-button square type="primary" text="编辑" class="action-btn" @click="handleEdit(holding.code)" />
             <van-button square type="danger" text="删除" class="action-btn" @click="handleDelete(holding.code)" />
           </template>
@@ -538,6 +607,58 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
         @confirm="onDateConfirm"
         @cancel="showDatePicker = false"
       />
+    </van-popup>
+
+    <!-- 调整成本弹窗 -->
+    <van-popup
+      v-model:show="showCostDialog"
+      position="bottom"
+      round
+      :style="{ height: '45%' }"
+    >
+      <div class="cost-dialog">
+        <div class="dialog-header">
+          <span>调整持仓成本</span>
+          <van-icon name="cross" @click="showCostDialog = false" />
+        </div>
+
+        <div class="dialog-content">
+          <!-- 基金信息 -->
+          <van-field
+            :model-value="`${costFormData.name} (${costFormData.code})`"
+            label="基金"
+            readonly
+          />
+
+          <!-- 成本金额 -->
+          <van-field
+            v-model="costFormData.amount"
+            type="number"
+            label="成本金额"
+            placeholder="请输入调整后的成本金额（元）"
+          />
+
+          <!-- 持有份额 -->
+          <van-field
+            v-model="costFormData.shares"
+            type="number"
+            label="持有份额"
+            placeholder="请输入调整后的持有份额"
+          />
+
+          <!-- 提示信息 -->
+          <div class="cost-tip">
+            <van-icon name="info-o" />
+            <span>调整成本可用于分红再投、补仓摊薄等场景，修改后收益率将重新计算</span>
+          </div>
+        </div>
+
+        <div class="dialog-footer">
+          <van-button block type="primary" @click="submitCostAdjust">
+            确认调整
+          </van-button>
+        </div>
+      </div>
     </van-popup>
   </div>
 </template>
@@ -783,5 +904,47 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
   border-radius: 4px;
   font-size: 12px;
   color: var(--color-primary);
+}
+
+/* 调整成本弹窗 */
+.cost-dialog {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+}
+
+.cost-dialog .dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.cost-dialog .dialog-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0;
+}
+
+.cost-dialog .dialog-footer {
+  padding: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.cost-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px 16px;
+  margin: 12px 16px;
+  background: var(--color-warning-bg, #fffbe6);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--color-warning, #faad14);
+  line-height: 1.5;
 }
 </style>

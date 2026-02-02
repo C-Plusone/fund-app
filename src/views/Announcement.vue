@@ -23,6 +23,16 @@ const activeTab = ref<'announcement' | 'update' | 'about'>('announcement')
 // [WHAT] 更新日志（本地维护）
 const updateLogs = [
   {
+    version: '1.5.0',
+    date: '2026-01-30',
+    changes: [
+      '新增：持仓成本调整功能',
+      '新增：支持分红再投、补仓摊薄等场景',
+      '修复：Android 状态栏重叠问题',
+      '优化：持仓操作增加"调整"按钮',
+    ]
+  },
+  {
     version: '1.4.0',
     date: '2026-01-30',
     changes: [

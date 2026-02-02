@@ -668,6 +668,8 @@ function submitAlert() {
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
+  /* [WHY] 适配 Android 系统状态栏，避免内容重叠 */
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
   background: var(--bg-secondary);
   position: sticky;
   top: 0;
