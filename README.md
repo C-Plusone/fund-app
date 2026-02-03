@@ -144,7 +144,7 @@ fund-app/
 4. 推送到分支 (`git push origin feature/amazing-feature`)
 5. 创建 Pull Request
 
-## 联系作者
+## 赞助或联系作者
 
 如有问题或建议，欢迎联系：
 
