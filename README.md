@@ -6,6 +6,7 @@
 ![Vue](https://img.shields.io/badge/Vue-3.x-brightgreen.svg)
 ![Capacitor](https://img.shields.io/badge/Capacitor-7.x-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Android-green.svg)
+![Version](https://img.shields.io/badge/Version-1.8.0-orange.svg)
 
 > 📖 **详细介绍**：[查看完整项目文档](./docs/ARTICLE.md)
 
@@ -17,12 +18,20 @@
 - **持仓管理** - 记录持仓份额，自动计算收益
 - **走势曲线** - 专业的分时/K线图表展示（当日、5日、月、季、年、3年）
 - **基金详情** - 完整的基金信息展示
+- **截图导入** - 支持支付宝/天天基金等平台截图识别导入
+
+### AI 智能功能
+- **AI智能日报** - 通义千问AI生成个性化投资日报
+- **趋势预测** - 基于技术指标的趋势分析
+- **持仓评分** - 综合评分系统（收益+风险+稳定性）
+- **相关性分析** - 持仓基金相关性及风险分散度
 
 ### 分析工具
 - **基金对比** - 多基金走势对比分析
 - **回测模拟** - 定投/一次性买入历史回测
 - **资产分析** - 持仓资产分布可视化
 - **定投计算器** - 定投收益模拟计算
+- **收益分析** - 夏普比率、最大回撤、年化收益等
 
 ### 数据查询
 - **分红记录** - 历史分红数据查询
@@ -41,7 +50,7 @@
 - **收益报告** - 生成可分享的收益图片
 - **投资日历** - 记录投资计划和事件
 - **财经资讯** - 实时财经新闻推送
-- **深色模式** - 浅色/深色主题切换
+- **交易终端风格** - 专业深色主题，实时交易状态显示
 
 ## 快速开始
 
@@ -134,6 +143,13 @@ fund-app/
 3. 提交更改 (`git commit -m 'Add amazing feature'`)
 4. 推送到分支 (`git push origin feature/amazing-feature`)
 5. 创建 Pull Request
+
+## 联系作者
+
+如有问题或建议，欢迎联系：
+
+- **QQ**: 1708298587
+- **GitHub Issues**: [提交问题](https://github.com/xiriovo/fund-app/issues)
 
 ## 致谢
 
