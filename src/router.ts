@@ -113,6 +113,12 @@ const router = createRouter({
       name: 'announcement',
       component: () => import('@/views/Announcement.vue'),
       meta: { title: '公告中心' }
+    },
+    {
+      path: '/daily-report',
+      name: 'dailyReport',
+      component: () => import('@/views/DailyReport.vue'),
+      meta: { title: 'AI日报' }
     }
   ]
 })

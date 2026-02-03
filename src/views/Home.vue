@@ -2,12 +2,12 @@
 // [WHY] 首页 - 展示自选基金列表、市场概览和快捷入口
 // [WHAT] 支持下拉刷新、左滑删除、点击跳转搜索添加、设置提醒
 
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { useAlertStore, ALERT_TYPE_CONFIG, type AlertType } from '@/stores/alert'
 import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex } from '@/api/fundFast'
-import { fetchFinanceNews, type NewsItem } from '@/api/tiantianApi'
+import { fetchFinanceNews, type NewsItem, getTradingSession, type TradingSession } from '@/api/tiantianApi'
 import { 
   fetchRemoteConfig, 
   getActiveAnnouncements, 
@@ -30,6 +30,29 @@ let hasLoadedRemoteConfig = false
 
 // [WHAT] 大盘指数
 const indices = ref<MarketIndexSimple[]>([])
+
+// [WHAT] 交易状态
+const tradingSession = ref<TradingSession>('closed')
+
+// [WHAT] 交易状态文本和样式
+const tradingStatus = computed(() => {
+  const session = tradingSession.value
+  const now = new Date()
+  const hour = now.getHours()
+  const minute = now.getMinutes()
+  const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
+  
+  switch (session) {
+    case 'morning':
+      return { text: '交易中', subText: `上午盘 ${timeStr}`, class: 'trading', icon: 'live' }
+    case 'noon_break':
+      return { text: '午休中', subText: `13:00 开盘`, class: 'break', icon: 'pause' }
+    case 'afternoon':
+      return { text: '交易中', subText: `下午盘 ${timeStr}`, class: 'trading', icon: 'live' }
+    default:
+      return { text: '已收盘', subText: '09:30 开盘', class: 'closed', icon: 'clock' }
+  }
+})
 
 // [WHAT] 全球指数
 const globalIndices = ref<GlobalIndex[]>([])
@@ -72,7 +95,16 @@ onMounted(async () => {
   loadNews()
   // 加载远程配置
   loadRemoteConfig()
+  // 初始化交易状态
+  updateTradingSession()
+  // 每分钟更新交易状态
+  setInterval(updateTradingSession, 60000)
 })
+
+// [WHAT] 更新交易状态
+function updateTradingSession() {
+  tradingSession.value = getTradingSession()
+}
 
 // [WHAT] 加载远程配置（公告和更新检查）
 // [WHY] 只在首次启动时加载，后台切换回来不重复加载
@@ -364,24 +396,35 @@ function submitAlert() {
       @refresh="onRefresh"
       class="fund-list-container"
     >
-      <!-- 大盘指数概览 -->
+      <!-- 大盘指数概览 - 交易终端风格 -->
       <div class="market-overview" v-if="indices.length > 0">
         <div class="overview-title">
-          <span>大盘指数</span>
-          <span class="view-more" @click="router.push('/market')">更多 ></span>
+          <div class="title-left">
+            <span class="live-dot" :class="tradingStatus.class"></span>
+            <span>大盘指数</span>
+          </div>
+          <div class="trading-status" :class="tradingStatus.class">
+            <span class="status-text">{{ tradingStatus.text }}</span>
+            <span class="status-time">{{ tradingStatus.subText }}</span>
+          </div>
         </div>
         <div class="index-grid">
           <div 
             v-for="index in indices" 
             :key="index.code" 
             class="index-item"
-            :class="index.change >= 0 ? 'up' : 'down'"
+            :class="[index.change >= 0 ? 'up' : 'down']"
+            @click="router.push('/market')"
           >
             <div class="index-name">{{ index.name }}</div>
-            <div class="index-value">{{ index.current.toFixed(2) }}</div>
-            <div class="index-change">
-              {{ index.change >= 0 ? '+' : '' }}{{ index.change.toFixed(2) }}%
+            <div class="index-value">
+              <span class="value-num">{{ index.current.toFixed(2) }}</span>
             </div>
+            <div class="index-change">
+              <van-icon :name="index.change >= 0 ? 'arrow-up' : 'arrow-down'" size="10" />
+              <span>{{ Math.abs(index.change).toFixed(2) }}%</span>
+            </div>
+            <div class="index-bar"></div>
           </div>
         </div>
       </div>
@@ -662,18 +705,20 @@ function submitAlert() {
   overflow: hidden;
 }
 
-/* 顶部搜索栏 */
+/* 顶部搜索栏 - 交易终端风格 */
 .top-header {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  /* [WHY] 适配 Android 系统状态栏，避免内容重叠 */
   padding-top: calc(12px + env(safe-area-inset-top, 0px));
-  background: var(--bg-secondary);
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, rgba(22, 27, 34, 0.95) 100%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   position: sticky;
   top: 0;
   z-index: 100;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .header-left {
@@ -681,9 +726,13 @@ function submitAlert() {
 }
 
 .app-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--color-primary);
+  font-size: 20px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--color-primary) 0%, #ffca28 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.5px;
 }
 
 .search-bar {
@@ -691,20 +740,43 @@ function submitAlert() {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  background: var(--bg-primary);
-  border-radius: 20px;
-  color: var(--text-secondary);
+  padding: 10px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
   font-size: 14px;
   cursor: pointer;
+  transition: all 0.2s;
+}
+
+.search-bar:active {
+  background: var(--bg-active);
+  border-color: var(--color-primary);
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-shrink: 0;
-  color: var(--text-primary);
+}
+
+.header-right .van-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.header-right .van-icon:active {
+  background: var(--bg-active);
+  color: var(--color-primary);
 }
 
 /* 公告栏 */
@@ -741,70 +813,211 @@ function submitAlert() {
   touch-action: pan-y;
 }
 
-/* 大盘指数概览 */
+/* 大盘指数概览 - 交易终端风格 */
 .market-overview {
-  padding: 12px;
+  padding: 16px;
   background: var(--bg-secondary);
-  margin: 8px 12px;
-  border-radius: 12px;
+  margin: 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  position: relative;
+  overflow: hidden;
 }
 
 .overview-title {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+}
+
+.title-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.view-more {
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: all 0.3s;
+}
+
+.live-dot.trading {
+  background: var(--color-down);
+  animation: pulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 8px var(--color-down);
+}
+
+.live-dot.break {
+  background: var(--color-primary);
+  animation: pulse 3s ease-in-out infinite;
+  box-shadow: 0 0 6px var(--color-primary);
+}
+
+.live-dot.closed {
+  background: var(--text-muted);
+  animation: none;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+/* 交易状态标签 */
+.trading-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.status-text {
   font-size: 12px;
-  font-weight: 400;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.trading-status.trading .status-text {
+  background: rgba(81, 207, 102, 0.15);
+  color: var(--color-down);
+}
+
+.trading-status.break .status-text {
+  background: rgba(255, 193, 7, 0.15);
+  color: var(--color-primary);
+}
+
+.trading-status.closed .status-text {
+  background: var(--bg-tertiary);
   color: var(--text-secondary);
+}
+
+.status-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-number);
+}
+
+.view-more {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-secondary);
+  padding: 6px 10px;
+  background: var(--color-secondary-bg);
+  border-radius: var(--radius-md);
+  transition: all 0.2s;
+}
+
+.view-more:active {
+  background: var(--bg-active);
 }
 
 .index-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
 }
 
 .index-item {
-  text-align: center;
-  padding: 8px 4px;
+  padding: 14px 12px;
   background: var(--bg-primary);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.index-item:active {
+  transform: scale(0.98);
+}
+
+.index-item.up {
+  border-color: rgba(255, 107, 107, 0.25);
+  background: linear-gradient(135deg, var(--bg-primary) 0%, rgba(255, 107, 107, 0.05) 100%);
+}
+
+.index-item.down {
+  border-color: rgba(81, 207, 102, 0.25);
+  background: linear-gradient(135deg, var(--bg-primary) 0%, rgba(81, 207, 102, 0.05) 100%);
 }
 
 .index-name {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-secondary);
-  margin-bottom: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .index-value {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 2px;
+  margin-bottom: 6px;
+}
+
+.value-num {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: var(--font-number);
+  letter-spacing: -0.5px;
 }
 
 .index-change {
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-number);
+  padding: 3px 8px;
+  border-radius: 4px;
 }
 
-.index-item.up .index-value,
-.index-item.up .index-change {
+.index-item.up .value-num {
   color: var(--color-up);
 }
 
-.index-item.down .index-value,
+.index-item.down .value-num {
+  color: var(--color-down);
+}
+
+.index-item.up .index-change {
+  color: var(--color-up);
+  background: rgba(255, 107, 107, 0.12);
+}
+
 .index-item.down .index-change {
   color: var(--color-down);
+  background: rgba(81, 207, 102, 0.12);
+}
+
+/* 底部进度条效果 */
+.index-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+}
+
+.index-item.up .index-bar {
+  background: linear-gradient(90deg, transparent 0%, var(--color-up) 50%, transparent 100%);
+}
+
+.index-item.down .index-bar {
+  background: linear-gradient(90deg, transparent 0%, var(--color-down) 50%, transparent 100%);
 }
 
 /* 全球指数 */
@@ -899,45 +1112,55 @@ function submitAlert() {
   cursor: pointer;
 }
 
-/* 快捷入口 */
+/* 快捷入口 - 交易终端风格 */
 .quick-actions {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  padding: 12px;
-  margin: 0 12px 8px;
+  gap: 6px;
+  padding: 16px 12px;
+  margin: 0 12px 12px;
   background: var(--bg-secondary);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
 }
 
 .action-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 10px 4px;
+  gap: 8px;
+  padding: 12px 4px;
   cursor: pointer;
-  border-radius: 8px;
-  transition: background 0.2s;
+  border-radius: var(--radius-md);
+  transition: all 0.2s;
 }
 
 .action-item:active {
-  background: var(--bg-primary);
+  background: var(--bg-active);
+  transform: scale(0.95);
 }
 
 .action-icon {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-primary);
-  border-radius: 10px;
+  background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-elevated) 100%);
+  border-radius: var(--radius-md);
   color: var(--color-primary);
+  border: 1px solid var(--border-color);
+  transition: all 0.2s;
+}
+
+.action-item:active .action-icon {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 12px rgba(255, 193, 7, 0.2);
 }
 
 .action-item span {
   font-size: 12px;
+  font-weight: 500;
   color: var(--text-secondary);
 }
 
@@ -960,17 +1183,34 @@ function submitAlert() {
   color: var(--text-secondary);
 }
 
-/* 财经资讯 */
+/* 财经资讯 - 交易终端风格 */
 .news-section {
   margin: 0 12px 12px;
   background: var(--bg-secondary);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
   overflow: hidden;
 }
 
 .news-section .section-header {
-  padding: 12px 16px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border-color);
+  background: linear-gradient(90deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+}
+
+.news-section .section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.news-section .section-title::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 16px;
+  background: var(--color-primary);
+  border-radius: 2px;
 }
 
 .news-list {
@@ -978,10 +1218,27 @@ function submitAlert() {
 }
 
 .news-item {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-light);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.news-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 0;
+  background: var(--color-secondary);
+  transition: height 0.2s;
+}
+
+.news-item:active::before {
+  height: 60%;
 }
 
 .news-item:last-child {
@@ -989,13 +1246,13 @@ function submitAlert() {
 }
 
 .news-item:active {
-  background: var(--bg-primary);
+  background: var(--bg-hover);
 }
 
 .news-content {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .news-title {

@@ -715,13 +715,39 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
   gap: 16px;
 }
 
-/* 汇总卡片 */
+/* 汇总卡片 - 交易终端风格 */
 .summary-card {
-  background: var(--bg-secondary);
+  background: linear-gradient(135deg, #1a1f2e 0%, var(--bg-secondary) 50%, #1a2420 100%);
   margin: 12px;
-  padding: 16px;
-  border-radius: 12px;
+  padding: 20px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
+  position: relative;
+  overflow: hidden;
+}
+
+.summary-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, var(--color-primary) 0%, transparent 70%);
+  opacity: 0.06;
+  transform: translate(30%, -30%);
+}
+
+.summary-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 150px;
+  height: 150px;
+  background: radial-gradient(circle, var(--color-down) 0%, transparent 70%);
+  opacity: 0.04;
+  transform: translate(-30%, 30%);
 }
 
 .summary-row {
@@ -736,18 +762,32 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
 
 .summary-item {
   flex: 1;
+  position: relative;
+  z-index: 1;
 }
 
 .summary-label {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .summary-value {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 700;
+  font-family: var(--font-number);
+  color: var(--text-highlight);
+  letter-spacing: -0.5px;
+}
+
+.summary-value.up {
+  color: var(--color-up);
+}
+
+.summary-value.down {
+  color: var(--color-down);
 }
 
 /* [WHY] 标准涨跌颜色 */
@@ -791,9 +831,30 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr 1fr;
   align-items: center;
-  padding: 12px 16px;
+  padding: 14px 16px;
   background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-light);
+  transition: all 0.2s;
+  position: relative;
+}
+
+.holding-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: transparent;
+  transition: background 0.2s;
+}
+
+.holding-item:active {
+  background: var(--bg-hover);
+}
+
+.holding-item:active::before {
+  background: var(--color-primary);
 }
 
 .col-name .fund-name {

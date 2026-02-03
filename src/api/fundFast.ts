@@ -265,6 +265,68 @@ export async function fetchNetValueHistoryFast(code: string, days = 30): Promise
 }
 
 /**
+ * 获取基金基本信息（备用方案）
+ * [WHY] 当天天基金API超时时，使用东方财富API获取基金名称和净值
+ * [WHAT] 使用东方财富的基金详情接口
+ */
+export async function fetchFundBasicInfo(code: string): Promise<{
+  name: string
+  netValue: number
+  changeRate: number
+  updateTime: string
+} | null> {
+  const cacheKey = `basic_info_${code}`
+  const cached = cache.get<{ name: string; netValue: number; changeRate: number; updateTime: string }>(cacheKey)
+  if (cached) return cached
+  
+  return new Promise((resolve) => {
+    const callbackName = `fbinfo_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const timeout = setTimeout(() => {
+      cleanup()
+      resolve(null)
+    }, 8000)
+
+    ;(window as any)[callbackName] = (data: any) => {
+      cleanup()
+      if (!data || !data.Datas) {
+        resolve(null)
+        return
+      }
+      
+      const d = data.Datas
+      const result = {
+        name: d.SHORTNAME || d.FSHORTNAME || '',
+        netValue: parseFloat(d.DWJZ) || 0,
+        changeRate: parseFloat(d.RZDF) || 0,
+        updateTime: d.FSRQ || ''
+      }
+      
+      if (result.name) {
+        cache.set(cacheKey, result, CACHE_TTL.FUND_DETAIL)
+      }
+      resolve(result)
+    }
+
+    function cleanup() {
+      clearTimeout(timeout)
+      delete (window as any)[callbackName]
+      const script = document.getElementById(callbackName)
+      if (script) document.body.removeChild(script)
+    }
+
+    const script = document.createElement('script')
+    script.id = callbackName
+    // [DEPS] 东方财富基金详情接口
+    script.src = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?callback=${callbackName}&FCODE=${code}&deviceid=wap&plat=Wap&product=EFund&version=2.0.0&_=${Date.now()}`
+    script.onerror = () => {
+      cleanup()
+      resolve(null)
+    }
+    document.body.appendChild(script)
+  })
+}
+
+/**
  * 获取基金最新公布净值（非估值）
  * [WHY] 估值接口返回的是预估值，这个接口返回基金公司实际公布的净值
  * [WHAT] 从东方财富历史净值接口获取最新一条记录

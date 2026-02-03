@@ -201,7 +201,7 @@ onMounted(() => {
 <template>
   <div class="market-page">
     <!-- 顶部导航 -->
-    <van-nav-bar title="行情">
+    <van-nav-bar title="行情" :safe-area-inset-top="true">
       <template #right>
         <van-icon name="replay" size="18" @click="onRefresh" />
       </template>

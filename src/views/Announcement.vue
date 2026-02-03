@@ -23,6 +23,18 @@ const activeTab = ref<'announcement' | 'update' | 'about'>('announcement')
 // [WHAT] 更新日志（本地维护）
 const updateLogs = [
   {
+    version: '1.8.0',
+    date: '2026-02-03',
+    changes: [
+      '新增：AI智能日报（通义千问生成）',
+      '新增：大盘指数交易状态实时显示',
+      '新增：联系作者QQ信息',
+      '优化：大盘指数UI交易终端风格',
+      '优化：多源API备用机制，数据更稳定',
+      '优化：交易终端深色主题风格',
+    ]
+  },
+  {
     version: '1.7.0',
     date: '2026-02-02',
     changes: [
@@ -115,6 +127,9 @@ const aboutInfo = {
   version: APP_VERSION,
   description: '一款简洁实用的基金管理工具',
   github: 'https://github.com/xiriovo/fund-app',
+  contact: {
+    qq: '1708298587'
+  },
   features: [
     '实时估值 - 秒级更新基金估值',
     '自选管理 - 便捷管理关注基金',
@@ -167,6 +182,16 @@ function getTypeLabel(type: string) {
 // [WHAT] 打开链接
 function openLink(url: string) {
   window.open(url, '_blank')
+}
+
+// [WHAT] 复制到剪贴板
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    showToast('已复制到剪贴板')
+  } catch {
+    showToast('复制失败')
+  }
 }
 
 // [WHAT] 清除已读记录
@@ -312,6 +337,20 @@ function resetReadStatus() {
               <div class="link-desc">查看源代码，欢迎 Star</div>
             </div>
             <van-icon name="arrow" color="var(--text-secondary)" />
+          </div>
+        </div>
+
+        <!-- 联系方式 -->
+        <div class="link-card">
+          <div class="link-item" @click="copyToClipboard(aboutInfo.contact.qq)">
+            <div class="link-icon qq-icon">
+              <span>QQ</span>
+            </div>
+            <div class="link-info">
+              <div class="link-title">联系作者</div>
+              <div class="link-desc">QQ: {{ aboutInfo.contact.qq }}</div>
+            </div>
+            <van-icon name="records-o" color="var(--text-secondary)" />
           </div>
         </div>
 
@@ -609,6 +648,13 @@ function resetReadStatus() {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.link-icon.qq-icon {
+  background: linear-gradient(135deg, #12b7f5 0%, #1e90ff 100%);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .link-info {
