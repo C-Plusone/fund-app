@@ -144,9 +144,7 @@ fund-app/
 4. 推送到分支 (`git push origin feature/amazing-feature`)
 5. 创建 Pull Request
 
-## 赞助或联系作者
-
-如有问题或建议，欢迎联系：
+## 赞助
 
 - **QQ**: 1708298587
 - **GitHub Issues**: [提交问题](https://github.com/xiriovo/fund-app/issues)
