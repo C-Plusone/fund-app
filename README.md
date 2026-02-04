@@ -6,7 +6,7 @@
 ![Vue](https://img.shields.io/badge/Vue-3.x-brightgreen.svg)
 ![Capacitor](https://img.shields.io/badge/Capacitor-7.x-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Android-green.svg)
-![Version](https://img.shields.io/badge/Version-1.8.0-orange.svg)
+![Version](https://img.shields.io/badge/Version-1.9.0-orange.svg)
 
 > 📖 **详细介绍**：[查看完整项目文档](./docs/ARTICLE.md)
 
@@ -44,13 +44,15 @@
 - **基金筛选** - 多维度筛选优质基金
 - **基金经理** - 经理业绩排行榜
 - **板块行情** - 各板块涨跌概览
+- **全球指数** - A股/港股/美股/欧洲/亚洲指数实时行情
 
 ### 辅助功能
 - **智能提醒** - 涨跌幅/净值预警提醒
 - **收益报告** - 生成可分享的收益图片
 - **投资日历** - 记录投资计划和事件
 - **财经资讯** - 实时财经新闻推送
-- **交易终端风格** - 专业深色主题，实时交易状态显示
+- **主题切换** - 浅色/深色主题自由切换
+- **页面记忆** - 记住上次访问的页面
 
 ## 快速开始
 
@@ -99,7 +101,7 @@ APK 输出位置：
 
 - **前端框架**：Vue 3 + TypeScript
 - **构建工具**：Vite 7
-- **UI 组件**：Vant 4
+- **UI 组件**：Vant 4 + Varlet 3
 - **状态管理**：Pinia
 - **图表绘制**：Canvas API（自定义实现）
 - **移动打包**：Capacitor 7
