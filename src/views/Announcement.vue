@@ -23,6 +23,19 @@ const activeTab = ref<'announcement' | 'update' | 'about'>('announcement')
 // [WHAT] 更新日志（本地维护）
 const updateLogs = [
   {
+    version: '1.9.0',
+    date: '2026-02-05',
+    changes: [
+      '新增：全球指数展示（A股/港股/美股/欧洲/亚洲）',
+      '新增：记住用户上次访问的页面',
+      '优化：默认使用浅色主题，日间使用更舒适',
+      '优化：API调用策略，数据加载更快',
+      '优化：底部导航组件升级为Varlet',
+      '修复：CSS变量冲突导致的颜色显示问题',
+      '修复：持仓页面更新状态标签显示',
+    ]
+  },
+  {
     version: '1.8.0',
     date: '2026-02-03',
     changes: [
