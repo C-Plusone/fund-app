@@ -1,8 +1,17 @@
 {
-  "version": "1.8.0",
+  "version": "1.9.0",
   "forceUpdate": false,
   "minVersion": "1.0.0",
   "announcements": [
+    {
+      "id": "v190-update",
+      "title": "v1.9.0 更新内容",
+      "content": "🎨 界面优化\n- 默认使用浅色主题，日间使用更舒适\n- 修复颜色显示异常问题\n\n🌍 新增功能\n- 全球指数展示 (A股/港股/美股/欧洲/亚洲)\n- 记住上次访问的页面\n\n⚡ 性能优化\n- API调用策略优化，数据加载更快\n- 清理冗余日志\n\n🔧 问题修复\n- 修复持仓页面状态标签显示\n- 底部导航组件升级",
+      "type": "success",
+      "showOnce": true,
+      "startTime": "2026-02-05T00:00:00Z",
+      "endTime": "2026-03-31T23:59:59Z"
+    },
     {
       "id": "github-link-001",
       "title": "开源项目",
@@ -13,13 +22,13 @@
       "endTime": "2027-12-31T23:59:59Z"
     }
   ],
-  "updateUrl": "https://hk.gh-proxy.org/https://github.com/xiriovo/fund-app/releases/download/v1.8.0/app-release.apk",
+  "updateUrl": "https://hk.gh-proxy.org/https://github.com/xiriovo/fund-app/releases/download/v1.9.0/app-release.apk",
   "links": {
     "github": "https://github.com/xiriovo/fund-app",
     "feedback": "https://github.com/xiriovo/fund-app/issues",
     "download123": "https://www.123865.com/s/Tfksjv-0rThd",
     "downloadLanzou": "https://wwbda.lanzn.com/ippf73hh019i",
     "downloadLanzouPwd": "36mh",
-    "downloadGithub": "https://hk.gh-proxy.org/https://github.com/xiriovo/fund-app/releases/download/v1.8.0/app-release.apk"
+    "downloadGithub": "https://hk.gh-proxy.org/https://github.com/xiriovo/fund-app/releases/download/v1.9.0/app-release.apk"
   }
 }
