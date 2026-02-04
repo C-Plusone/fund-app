@@ -4,7 +4,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { TradeRecord, TradeType } from '@/types/fund'
+import type { TradeRecord, TradeType, TradeStatus } from '@/types/fund'
 
 // [WHAT] localStorage 存储键
 const STORAGE_KEY = 'fund_trades'
@@ -34,6 +34,11 @@ export const useTradeStore = defineStore('trade', () => {
   
   /** 所有交易记录 */
   const trades = ref<TradeRecord[]>(loadTrades())
+
+  // [FIX] #40 重新加载交易记录（确保数据同步）
+  function refreshTrades() {
+    trades.value = loadTrades()
+  }
 
   // ========== Getters ==========
 
@@ -207,6 +212,41 @@ export const useTradeStore = defineStore('trade', () => {
   }
 
   /**
+   * [FIX] #64 添加定投记录（支持状态）
+   */
+  function addAutoInvestTrade(params: {
+    code: string
+    name: string
+    date: string
+    amount: number
+    netValue: number
+    fee?: number
+    remark?: string
+    status?: TradeStatus
+  }): TradeRecord {
+    const shares = params.netValue > 0 ? params.amount / params.netValue : 0
+    return addTrade({
+      code: params.code,
+      name: params.name,
+      type: 'auto_invest',
+      date: params.date,
+      amount: params.amount,
+      netValue: params.netValue,
+      shares,
+      fee: params.fee || 0,
+      remark: params.remark,
+      status: params.status || 'pending'
+    })
+  }
+
+  /**
+   * [FIX] #64 更新交易状态
+   */
+  function updateTradeStatus(id: string, status: TradeStatus): boolean {
+    return updateTrade(id, { status })
+  }
+
+  /**
    * 更新交易记录
    */
   function updateTrade(id: string, updates: Partial<TradeRecord>): boolean {
@@ -261,9 +301,12 @@ export const useTradeStore = defineStore('trade', () => {
     addBuyTrade,
     addSellTrade,
     addDividendTrade,
+    addAutoInvestTrade,    // [FIX] #64
     updateTrade,
+    updateTradeStatus,     // [FIX] #64
     deleteTrade,
     deleteTradesByFund,
-    clearAllTrades
+    clearAllTrades,
+    refreshTrades          // [FIX] #40
   }
 })

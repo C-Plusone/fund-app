@@ -67,12 +67,13 @@ function getTypeCode(type: string): string {
 }
 
 // [WHAT] 获取排序字段映射
+// [FIX] #73 修正 Eastmoney API 排序字段
 function getSortField(sort: string): string {
   const sortMap: Record<string, string> = {
-    'dayReturn': 'rzdf',   // 日涨跌幅
-    'weekReturn': 'zzf',   // 周涨幅
-    'monthReturn': 'jzzzf', // 月涨幅
-    'yearReturn': 'lnzz'   // 年涨幅
+    'dayReturn': 'rzdf',    // 日涨跌幅
+    'weekReturn': 'zzf',    // 近1周涨幅
+    'monthReturn': 'jzzzf', // 近1月涨幅
+    'yearReturn': 'jnzf'    // 近1年涨幅（修正：lnzz -> jnzf）
   }
   return sortMap[sort] || 'rzdf'
 }
@@ -120,16 +121,28 @@ async function loadFunds(reset = false) {
           try {
             const rankData = (window as any).rankData
             if (rankData?.datas?.length) {
+              // [FIX] #73 修正字段索引
+              // Eastmoney rankhandler 返回格式:
+              // 0:代码, 1:名称, 2:拼音, 3:日期, 4:单位净值, 5:累计净值
+              // 6:日涨幅, 7:近1周, 8:近1月, 9:近3月, 10:近6月, 11:近1年
+              // 12:近2年, 13:近3年, 14:今年来, 15:成立来
               const funds = rankData.datas.map((item: string) => {
                 const p = item.split(',')
+                // [WHAT] 处理可能的空值和格式错误
+                const parseNum = (val: string | undefined, def = 0) => {
+                  if (!val || val === '' || val === '--') return def
+                  const num = parseFloat(val)
+                  return isNaN(num) ? def : num
+                }
                 return {
-                  code: p[0] || '', name: p[1] || '',
+                  code: p[0] || '', 
+                  name: p[1] || '',
                   type: typeOptions.find(t => t.value === fundType.value)?.label || '混合型',
-                  dayReturn: parseFloat(p[6] ?? '0') || 0,
-                  weekReturn: parseFloat(p[7] ?? '0') || 0,
-                  monthReturn: parseFloat(p[8] ?? '0') || 0,
-                  yearReturn: parseFloat(p[11] ?? '0') || 0,
-                  netValue: parseFloat(p[4] ?? '0') || 0
+                  dayReturn: parseNum(p[6]),
+                  weekReturn: parseNum(p[7]),
+                  monthReturn: parseNum(p[8]),
+                  yearReturn: parseNum(p[11]),
+                  netValue: parseNum(p[4])
                 }
               }).filter((f: FilteredFund) => f.code && f.name)
               done(funds)

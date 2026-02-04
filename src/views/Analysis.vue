@@ -40,6 +40,8 @@ const isAnalyzing = ref(false)
 // [WHAT] 初始化数据
 onMounted(async () => {
   holdingStore.initHoldings()
+  // [FIX] #40 确保交易统计数据同步
+  tradeStore.refreshTrades()
   // 延迟加载统计分析
   setTimeout(() => runStatisticsAnalysis(), 1000)
 })
@@ -49,6 +51,8 @@ async function onRefresh() {
   isRefreshing.value = true
   try {
     await holdingStore.refreshEstimates()
+    // [FIX] #40 刷新时同步交易数据
+    tradeStore.refreshTrades()
     await runStatisticsAnalysis()
     showToast('刷新成功')
   } finally {
@@ -83,12 +87,59 @@ async function runStatisticsAnalysis() {
     }
     
     // [WHAT] 计算组合收益分析（加权平均）
+    // [FIX] #56 使用加权平均计算组合收益而非单只基金
     if (fundsData.length > 0) {
-      // 简化：使用第一只基金的数据作为组合代表
-      const firstFund = fundsData[0]
-      portfolioAnalysis.value = calculateReturnAnalysis(firstFund.data)
-      if (portfolioAnalysis.value) {
-        portfolioScore.value = calculateFundScore(portfolioAnalysis.value)
+      // 计算各基金权重
+      const totalValue = holdingStore.summary.totalValue || 1
+      const weights: number[] = []
+      
+      for (const fd of fundsData) {
+        const holding = holdingStore.holdings.find(h => h.code === fd.code)
+        const value = (holding?.marketValue && holding.marketValue > 0) ? holding.marketValue : (holding?.amount || 0)
+        weights.push(value / totalValue)
+      }
+      
+      // 计算每只基金的收益指标
+      const analyses = fundsData.map(fd => calculateReturnAnalysis(fd.data)).filter(a => a !== null)
+      
+      if (analyses.length > 0) {
+        // 加权平均收益指标
+        let totalWeight = 0
+        let weightedAnnualized = 0
+        let weightedVolatility = 0
+        let weightedDrawdown = 0
+        let weightedSharpe = 0
+        
+        analyses.forEach((analysis, i) => {
+          const w = weights[i] || 1 / analyses.length
+          totalWeight += w
+          weightedAnnualized += analysis.annualizedReturn * w
+          weightedVolatility += analysis.volatility * w
+          weightedDrawdown += analysis.maxDrawdown * w
+          weightedSharpe += analysis.sharpeRatio * w
+        })
+        
+        // 归一化
+        if (totalWeight > 0) {
+          // [FIX] 只使用 ReturnAnalysis 类型中存在的属性
+          const firstAnalysis = analyses[0]
+          portfolioAnalysis.value = {
+            totalReturn: firstAnalysis.totalReturn,
+            annualizedReturn: weightedAnnualized / totalWeight,
+            dailyReturn: firstAnalysis.dailyReturn,
+            volatility: weightedVolatility / totalWeight,
+            maxDrawdown: weightedDrawdown / totalWeight,
+            maxDrawdownStart: firstAnalysis.maxDrawdownStart,
+            maxDrawdownEnd: firstAnalysis.maxDrawdownEnd,
+            sharpeRatio: weightedSharpe / totalWeight,
+            sortinoRatio: firstAnalysis.sortinoRatio,
+            calmarRatio: firstAnalysis.calmarRatio,
+            tradingDays: firstAnalysis.tradingDays,
+            startDate: firstAnalysis.startDate,
+            endDate: firstAnalysis.endDate
+          }
+          portfolioScore.value = calculateFundScore(portfolioAnalysis.value)
+        }
       }
     }
     
@@ -98,11 +149,13 @@ async function runStatisticsAnalysis() {
     }
     
     // [WHAT] 资产配置建议
+    // [FIX] #57 从基金数据中获取正确的类型信息
     const holdingsForAllocation = holdingStore.holdings.map(h => ({
       code: h.code,
       name: h.name,
       amount: h.marketValue || h.amount,
-      type: '混合型'  // 默认类型
+      // 优先使用已存储的基金类型，否则根据名称推断
+      type: h.fundType || inferFundType(h.name)
     }))
     allocationAdvice.value = analyzeAllocation(holdingsForAllocation)
     
@@ -123,21 +176,47 @@ function getScoreLevelColor(level: string): string {
   return colors[level] || '#999'
 }
 
+// [FIX] #57 根据基金名称推断类型
+function inferFundType(name: string): string {
+  if (!name) return '混合型'
+  if (name.includes('股票') || name.includes('成长') || name.includes('价值')) return '股票型'
+  if (name.includes('指数') || name.includes('ETF') || name.includes('500') || name.includes('300')) return '指数型'
+  if (name.includes('债券') || name.includes('纯债') || name.includes('信用')) return '债券型'
+  if (name.includes('货币') || name.includes('现金') || name.includes('宝')) return '货币型'
+  if (name.includes('QDII') || name.includes('美元') || name.includes('港股') || name.includes('纳斯达克')) return 'QDII'
+  if (name.includes('FOF') || name.includes('养老目标')) return 'FOF'
+  return '混合型'
+}
+
 // ========== 资产配置分析 ==========
 
 // [WHAT] 计算各基金占比
+// [FIX] #55 修复资产配置统计逻辑
 const assetAllocation = computed(() => {
-  const total = holdingStore.summary.totalValue
+  // 计算有效市值总和（包含没有实时估值的持仓）
+  let total = 0
+  holdingStore.holdings.forEach(h => {
+    if (h.marketValue && h.marketValue > 0) {
+      total += h.marketValue
+    } else {
+      // 没有市值时使用买入金额
+      total += h.amount
+    }
+  })
+  
   if (total <= 0) return []
   
   return holdingStore.holdings
-    .filter(h => h.marketValue && h.marketValue > 0)
-    .map(h => ({
-      code: h.code,
-      name: h.name,
-      value: h.marketValue || 0,
-      ratio: ((h.marketValue || 0) / total) * 100
-    }))
+    .map(h => {
+      // [FIX] #55 如果没有市值，使用买入金额
+      const value = (h.marketValue && h.marketValue > 0) ? h.marketValue : h.amount
+      return {
+        code: h.code,
+        name: h.name,
+        value,
+        ratio: (value / total) * 100
+      }
+    })
     .sort((a, b) => b.value - a.value)
 })
 
@@ -445,20 +524,16 @@ function goToTrades() {
       </div>
     </div>
 
-    <!-- 实用工具 -->
+    <!-- [FIX] #42 精简实用工具入口 -->
     <div class="section">
       <div class="section-header">
-        <span class="section-title">实用工具</span>
+        <span class="section-title">分析工具</span>
       </div>
       
       <div class="tools-grid">
         <div class="tool-item" @click="router.push('/compare')">
           <van-icon name="chart-trending-o" size="24" />
           <span>基金对比</span>
-        </div>
-        <div class="tool-item" @click="router.push('/calculator')">
-          <van-icon name="calculator-o" size="24" />
-          <span>定投计算</span>
         </div>
         <div class="tool-item" @click="router.push('/backtest')">
           <van-icon name="replay" size="24" />
@@ -472,25 +547,21 @@ function goToTrades() {
           <van-icon name="newspaper-o" size="24" />
           <span>AI日报</span>
         </div>
-        <div class="tool-item" @click="router.push('/trades')">
-          <van-icon name="orders-o" size="24" />
-          <span>交易记录</span>
-        </div>
-        <div class="tool-item" @click="router.push('/alerts')">
-          <van-icon name="bell-o" size="24" />
-          <span>智能提醒</span>
+        <div class="tool-item" @click="router.push('/calculator')">
+          <van-icon name="calculator-o" size="24" />
+          <span>定投计算</span>
         </div>
         <div class="tool-item" @click="router.push('/report')">
           <van-icon name="description-o" size="24" />
           <span>收益报告</span>
         </div>
-        <div class="tool-item" @click="router.push('/calendar')">
-          <van-icon name="calendar-o" size="24" />
-          <span>投资日历</span>
-        </div>
         <div class="tool-item" @click="router.push('/manager-rank')">
           <van-icon name="manager-o" size="24" />
           <span>经理排行</span>
+        </div>
+        <div class="tool-item" @click="router.push('/alerts')">
+          <van-icon name="bell-o" size="24" />
+          <span>智能提醒</span>
         </div>
       </div>
     </div>

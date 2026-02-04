@@ -118,6 +118,7 @@ function getReturn(fund: CompareFund, period: string): number | null {
 }
 
 // [WHAT] 获取最佳/最差标记
+// [FIX] #36 优化对比逻辑，只有差异明显时才标记
 function getRankClass(funds: CompareFund[], period: string, code: string): string {
   const returns = funds
     .map(f => ({ code: f.code, value: getReturn(f, period) }))
@@ -126,10 +127,48 @@ function getRankClass(funds: CompareFund[], period: string, code: string): strin
   if (returns.length < 2) return ''
   
   const sorted = [...returns].sort((a, b) => b.value - a.value)
-  if (sorted[0]?.code === code) return 'best'
-  if (sorted[sorted.length - 1]?.code === code) return 'worst'
+  const best = sorted[0]!
+  const worst = sorted[sorted.length - 1]!
+  
+  // [FIX] #36 只有差异超过1%时才标记最佳/最差
+  const diff = best.value - worst.value
+  if (Math.abs(diff) < 1) return ''
+  
+  if (best.code === code) return 'best'
+  if (worst.code === code) return 'worst'
   return ''
 }
+
+// [FIX] #36 计算综合评分
+const fundScores = computed(() => {
+  if (selectedFunds.value.length < 2) return []
+  
+  return selectedFunds.value.map(fund => {
+    let score = 0
+    let validPeriods = 0
+    
+    compareDimensions.forEach(dim => {
+      const returns = selectedFunds.value
+        .map(f => ({ code: f.code, value: getReturn(f, dim.key) }))
+        .filter(r => r.value !== null) as { code: string, value: number }[]
+      
+      if (returns.length < 2) return
+      
+      const sorted = [...returns].sort((a, b) => b.value - a.value)
+      const rank = sorted.findIndex(r => r.code === fund.code) + 1
+      
+      // 排名越靠前分数越高
+      score += (returns.length - rank + 1)
+      validPeriods++
+    })
+    
+    return {
+      code: fund.code,
+      name: fund.name,
+      score: validPeriods > 0 ? (score / validPeriods).toFixed(1) : '--'
+    }
+  }).sort((a, b) => parseFloat(b.score) - parseFloat(a.score))
+})
 
 // [WHAT] 格式化收益率
 function formatReturn(value: number | null): string {
@@ -280,6 +319,22 @@ function goToDetail(code: string) {
         <span class="legend-item worst">
           <van-icon name="warning-o" /> 最差
         </span>
+      </div>
+      
+      <!-- [FIX] #36 综合评分排名 -->
+      <div v-if="fundScores.length > 0" class="score-section">
+        <div class="section-title">综合排名</div>
+        <div class="score-list">
+          <div 
+            v-for="(item, index) in fundScores" 
+            :key="item.code"
+            class="score-item"
+          >
+            <span class="rank" :class="{ 'top': index === 0 }">{{ index + 1 }}</span>
+            <span class="name">{{ item.name.slice(0, 10) }}</span>
+            <span class="score">{{ item.score }}分</span>
+          </div>
+        </div>
       </div>
     </div>
     
@@ -510,5 +565,60 @@ function goToDetail(code: string) {
 
 .legend-item.worst {
   opacity: 0.6;
+}
+
+/* [FIX] #36 综合评分样式 */
+.score-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.score-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.score-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+}
+
+.score-item .rank {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--text-secondary);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.score-item .rank.top {
+  background: linear-gradient(135deg, #ffd700, #ff8c00);
+}
+
+.score-item .name {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.score-item .score {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-primary);
 }
 </style>

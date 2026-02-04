@@ -1396,3 +1396,18 @@ export async function fetchAccumulatedReturn(
     document.body.appendChild(script)
   })
 }
+
+/**
+ * 从本地基金列表中获取基金名称
+ * [WHY] 当 API 获取失败时，使用本地缓存的基金列表作为兜底
+ * [EDGE] 如果本地列表也没有，返回 null
+ */
+export async function getFundNameFromList(code: string): Promise<string | null> {
+  try {
+    const list = await fetchFundList()
+    const fund = list.find(f => f.code === code)
+    return fund?.name || null
+  } catch {
+    return null
+  }
+}

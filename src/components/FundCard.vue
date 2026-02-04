@@ -71,6 +71,14 @@ function onTouchMove() {
     pressTimer = null
   }
 }
+
+// [FIX] #51 格式化更新时间，只显示时:分
+function formatTime(time: string | undefined): string {
+  if (!time) return ''
+  // 格式可能是 "2024-01-01 15:00" 或 "15:00"
+  const match = time.match(/(\d{2}:\d{2})/)
+  return match ? match[1] : ''
+}
 </script>
 
 <template>
@@ -83,10 +91,16 @@ function onTouchMove() {
       @touchend="onTouchEnd"
       @touchmove="onTouchMove"
     >
+      <!-- [FIX] #51 优化信息显示布局 -->
       <!-- 左侧：基金信息 -->
       <div class="fund-info">
-        <div class="fund-name">{{ fund.name || '加载中...' }}</div>
-        <div class="fund-code">{{ fund.code }}</div>
+        <div class="fund-name-row">
+          <span class="fund-name">{{ fund.name || '加载中...' }}</span>
+        </div>
+        <div class="fund-meta-row">
+          <span class="fund-code">{{ fund.code }}</span>
+          <span v-if="fund.estimateTime" class="update-time">{{ formatTime(fund.estimateTime) }}</span>
+        </div>
       </div>
       
       <!-- 右侧：估值信息（带闪烁效果） -->
@@ -124,19 +138,44 @@ function onTouchMove() {
   opacity: 0.6;
 }
 
+/* [FIX] #51 优化信息显示布局 */
 .fund-info {
   flex: 1;
+  min-width: 0; /* 防止内容溢出 */
+}
+
+.fund-name-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
 }
 
 .fund-name {
   font-size: 16px;
   color: var(--text-primary);
-  margin-bottom: 4px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fund-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .fund-code {
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.update-time {
+  font-size: 11px;
+  color: var(--text-tertiary, #c8c9cc);
+  padding: 1px 4px;
+  background: var(--bg-tertiary, #f7f8fa);
+  border-radius: 2px;
 }
 
 .fund-value {

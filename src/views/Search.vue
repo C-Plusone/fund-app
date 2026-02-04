@@ -134,6 +134,15 @@ function goBack() {
 function isInWatchlist(code: string): boolean {
   return fundStore.isFundInWatchlist(code)
 }
+
+// [FIX] #53 高亮匹配的关键词
+function highlightMatch(text: string, kw: string): string {
+  if (!kw.trim()) return text
+  // 转义正则特殊字符
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(`(${escaped})`, 'gi')
+  return text.replace(regex, '<span class="highlight">$1</span>')
+}
 </script>
 
 <template>
@@ -163,8 +172,11 @@ function isInWatchlist(code: string): boolean {
         @click="handleAdd(fund)"
       >
         <div class="fund-info">
-          <div class="fund-name">{{ fund.name }}</div>
-          <div class="fund-meta">{{ fund.code }} · {{ fund.type }}</div>
+          <!-- [FIX] #53 高亮匹配关键词 -->
+          <div class="fund-name" v-html="highlightMatch(fund.name, keyword)"></div>
+          <div class="fund-meta">
+            <span v-html="highlightMatch(fund.code, keyword)"></span> · {{ fund.type }}
+          </div>
         </div>
         <div class="fund-change-col">
           <span 
@@ -298,5 +310,14 @@ function isInWatchlist(code: string): boolean {
   justify-content: center;
   align-items: center;
   flex-shrink: 0;
+}
+
+/* [FIX] #53 高亮匹配关键词 */
+:deep(.highlight) {
+  color: var(--color-primary, #1989fa);
+  font-weight: 600;
+  background: rgba(25, 137, 250, 0.1);
+  border-radius: 2px;
+  padding: 0 2px;
 }
 </style>

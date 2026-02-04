@@ -1,13 +1,17 @@
 // [WHY] 应用入口文件，初始化 Vue 应用和插件
-// [WHAT] 注册 Pinia、Vue Router、Vant 等插件
+// [WHAT] 注册 Pinia、Vue Router、Vant、Varlet 等插件
+// [NOTE] 迁移期间同时使用 Vant 和 Varlet
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import router from './router'
 import App from './App.vue'
 
-// [WHY] 导入 Vant 样式和必要的函数组件样式
+// [WHY] 导入 Vant 样式（迁移期间保留）
 import 'vant/lib/index.css'
+
+// [WHY] 导入 Varlet 样式
+import '@varlet/ui/es/style'
 
 // 导入全局样式
 import './style.css'

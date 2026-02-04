@@ -9,8 +9,8 @@ import { useFundStore } from '@/stores/fund'
 import { useHoldingStore } from '@/stores/holding'
 import { fetchStockHoldings, detectShareClass } from '@/api/fund'
 import { 
-  fetchFundEstimateFast, fetchIndustryAllocation, fetchAssetAllocation, fetchFundRating,
-  type IndustryAllocation, type AssetAllocation, type FundRating
+  fetchFundEstimateFast, fetchFundAccurateData, fetchIndustryAllocation, fetchAssetAllocation, fetchFundRating,
+  type IndustryAllocation, type AssetAllocation, type FundRating, type FundAccurateData
 } from '@/api/fundFast'
 import { 
   fetchPeriodReturnExt, fetchSimilarFunds, fetchSectorFunds, 
@@ -38,6 +38,8 @@ const fundCode = computed(() => route.params.code as string)
 
 // 数据状态
 const fundInfo = ref<FundEstimate | null>(null)
+// [FIX] #48 使用准确数据来同步当日涨幅
+const accurateData = ref<FundAccurateData | null>(null)
 const stockHoldings = ref<StockHolding[]>([])
 const periodReturns = ref<PeriodReturnExt[]>([])
 const similarFunds = ref<SimilarFund[]>([])
@@ -177,9 +179,23 @@ function stopAutoRefresh() {
 
 async function refreshEstimate() {
   try {
-    const estimate = await fetchFundEstimateFast(fundCode.value)
+    // [FIX] #48 同时获取估值和准确数据
+    const [estimate, accurate] = await Promise.all([
+      fetchFundEstimateFast(fundCode.value).catch(() => null),
+      fetchFundAccurateData(fundCode.value).catch(() => null)
+    ])
     if (estimate) {
       fundInfo.value = estimate
+    }
+    if (accurate) {
+      accurateData.value = accurate
+      // 如果准确数据的涨幅与估值不同，使用准确数据同步
+      if (fundInfo.value && accurate.dayChange !== 0) {
+        fundInfo.value = {
+          ...fundInfo.value,
+          gszzl: accurate.dayChange.toString()
+        }
+      }
     }
   } catch {
     // 静默失败
@@ -190,11 +206,26 @@ async function loadFundData() {
   isLoading.value = true
   
   try {
-    const estimate = await fetchFundEstimateFast(fundCode.value).catch(() => null)
+    // [FIX] #48 同时获取估值和准确数据，确保涨幅同步
+    const [estimate, accurate] = await Promise.all([
+      fetchFundEstimateFast(fundCode.value).catch(() => null),
+      fetchFundAccurateData(fundCode.value).catch(() => null)
+    ])
+    
+    if (accurate) {
+      accurateData.value = accurate
+    }
     
     if (estimate) {
       fundInfo.value = estimate
       shareClass.value = detectShareClass(fundCode.value, estimate.name)
+      // [FIX] #48 如果准确数据有更新的涨幅，同步到 fundInfo
+      if (accurate && accurate.dayChange !== 0) {
+        fundInfo.value = {
+          ...fundInfo.value,
+          gszzl: accurate.dayChange.toString()
+        }
+      }
     } else {
       const { searchFund } = await import('@/api/fund')
       const funds = await searchFund(fundCode.value, 1)
@@ -204,7 +235,7 @@ async function loadFundData() {
           name: funds[0]!.name,
           dwjz: '0',
           gsz: '0',
-          gszzl: '0',
+          gszzl: accurate?.dayChange?.toString() || '0',
           gztime: '--'
         }
         shareClass.value = detectShareClass(fundCode.value, funds[0]!.name)
@@ -214,7 +245,7 @@ async function loadFundData() {
           name: `基金 ${fundCode.value}`,
           dwjz: '0',
           gsz: '0',
-          gszzl: '0',
+          gszzl: accurate?.dayChange?.toString() || '0',
           gztime: '--'
         }
       }
@@ -328,11 +359,23 @@ function goToSearch() {
   router.push('/search')
 }
 
+// [FIX] #38 添加持仓
+function addHolding() {
+  // 打开添加持仓弹窗
+  costFormData.value = {
+    code: fundCode.value,
+    name: fundInfo.value?.name || '',
+    amount: '',
+    shares: ''
+  }
+  showCostDialog.value = true
+}
+
 // [WHAT] 底部操作 - 修改持仓（直接弹窗）
 function editHolding() {
   const holding = holdingInfo.value
   if (!holding) {
-    showToast('暂未持有该基金')
+    addHolding()
     return
   }
   
@@ -376,8 +419,15 @@ async function submitCostAdjust() {
   showCostDialog.value = false
 }
 
+// [FIX] #39 添加提醒时传递当前基金代码和名称
 function setReminder() {
-  router.push('/alerts')
+  router.push({
+    path: '/alerts',
+    query: {
+      code: fundCode.value,
+      name: fundInfo.value?.name || ''
+    }
+  })
 }
 
 function showTransactions() {
@@ -1107,10 +1157,11 @@ function formatPercent(num: number): string {
     </div>
 
     <!-- 底部操作栏 -->
+    <!-- [FIX] #38 根据持仓状态显示不同按钮文字 -->
     <div class="bottom-bar">
-      <div class="bar-item" @click="editHolding">
-        <van-icon name="edit" size="20" />
-        <span>修改持仓</span>
+      <div class="bar-item" @click="holdingInfo ? editHolding() : addHolding()">
+        <van-icon :name="holdingInfo ? 'edit' : 'add-o'" size="20" />
+        <span>{{ holdingInfo ? '修改持仓' : '添加持仓' }}</span>
       </div>
       <div class="bar-item" @click="setReminder">
         <van-icon name="bell" size="20" />

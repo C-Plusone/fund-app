@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // [WHY] 截图导入组件 - 通过 OCR 识别截图中的持仓信息
 // [WHAT] 支持拍照/选择图片，识别基金持仓并批量导入
+// [WHAT] 支持通过名称搜索匹配基金代码，支持已持有基金的加仓
 // [DEPS] 依赖 ocr.ts 进行文字识别
 
 import { ref, computed } from 'vue'
@@ -35,12 +36,25 @@ interface EnhancedHolding extends RecognizedHolding {
   netValue?: number
   loading?: boolean
   selected?: boolean
+  /** 是否是加仓（已持有的基金） */
+  isAddPosition?: boolean
+  /** 搜索结果（用于手动匹配） */
+  searchResults?: FundInfo[]
+  /** 是否正在搜索 */
+  searching?: boolean
+  /** 是否显示搜索面板 */
+  showSearch?: boolean
 }
 const enhancedHoldings = ref<EnhancedHolding[]>([])
 
 // [WHAT] 计算选中数量
 const selectedCount = computed(() => {
   return enhancedHoldings.value.filter(h => h.selected && h.code).length
+})
+
+// [WHAT] 计算加仓数量
+const addPositionCount = computed(() => {
+  return enhancedHoldings.value.filter(h => h.selected && h.code && h.isAddPosition).length
 })
 
 // [WHAT] 文件选择处理
@@ -100,11 +114,20 @@ async function enhanceHoldings(holdings: RecognizedHolding[]) {
   enhancedHoldings.value = holdings.map(h => ({
     ...h,
     loading: true,
-    selected: h.code && h.amount > 0 && !holdingStore.hasHolding(h.code)
+    // [NEW] 允许选中已持有的基金（用于加仓）
+    selected: h.amount > 0 && (h.code ? true : false),
+    isAddPosition: h.code ? holdingStore.hasHolding(h.code) : false,
+    needsCodeMatch: h.needsCodeMatch || !h.code
   }))
   
   // [WHAT] 并行获取基金信息
   const promises = holdings.map(async (h, index) => {
+    // [NEW] 如果没有代码但有名称，尝试通过名称搜索匹配
+    if (!h.code && h.name) {
+      await searchAndMatchByName(index, h.name)
+      return
+    }
+    
     if (!h.code) {
       enhancedHoldings.value[index].loading = false
       return
@@ -125,6 +148,9 @@ async function enhanceHoldings(holdings: RecognizedHolding[]) {
       if (estimate) {
         enhancedHoldings.value[index].netValue = parseFloat(estimate.dwjz) || parseFloat(estimate.gsz) || 1
       }
+      
+      // [NEW] 检查是否已持有
+      enhancedHoldings.value[index].isAddPosition = holdingStore.hasHolding(h.code)
     } catch (error) {
       console.error(`获取基金 ${h.code} 信息失败:`, error)
     } finally {
@@ -135,15 +161,111 @@ async function enhanceHoldings(holdings: RecognizedHolding[]) {
   await Promise.all(promises)
 }
 
+// [NEW] 通过名称搜索并自动匹配基金代码
+async function searchAndMatchByName(index: number, name: string) {
+  try {
+    enhancedHoldings.value[index].searching = true
+    
+    // [WHAT] 搜索基金
+    const results = await searchFund(name, 10)
+    enhancedHoldings.value[index].searchResults = results
+    
+    // [WHAT] 尝试自动匹配（名称高度相似）
+    if (results.length > 0) {
+      // 优先精确匹配
+      const exactMatch = results.find(r => r.name === name)
+      // 其次检查名称包含关系
+      const containsMatch = results.find(r => 
+        r.name.includes(name) || name.includes(r.name.replace(/[A-Z]$/i, ''))
+      )
+      
+      const bestMatch = exactMatch || containsMatch
+      
+      if (bestMatch) {
+        // [WHAT] 自动选中最佳匹配
+        await selectSearchResult(index, bestMatch)
+      } else {
+        // [WHAT] 无法自动匹配，显示搜索面板让用户手动选择
+        enhancedHoldings.value[index].showSearch = true
+        enhancedHoldings.value[index].loading = false
+      }
+    } else {
+      enhancedHoldings.value[index].loading = false
+    }
+  } catch (error) {
+    console.error(`搜索基金 ${name} 失败:`, error)
+    enhancedHoldings.value[index].loading = false
+  } finally {
+    enhancedHoldings.value[index].searching = false
+  }
+}
+
+// [NEW] 用户手动选择搜索结果
+async function selectSearchResult(index: number, fund: FundInfo) {
+  const holding = enhancedHoldings.value[index]
+  
+  // [WHAT] 更新代码和基金信息
+  holding.code = fund.code
+  holding.fundInfo = fund
+  holding.name = fund.name
+  holding.showSearch = false
+  holding.needsCodeMatch = false
+  holding.selected = true
+  
+  // [WHAT] 检查是否已持有
+  holding.isAddPosition = holdingStore.hasHolding(fund.code)
+  
+  // [WHAT] 获取净值
+  try {
+    const estimate = await fetchFundEstimate(fund.code)
+    if (estimate) {
+      holding.netValue = parseFloat(estimate.dwjz) || parseFloat(estimate.gsz) || 1
+    }
+  } catch (error) {
+    console.error(`获取基金 ${fund.code} 净值失败:`, error)
+  }
+  
+  holding.loading = false
+}
+
+// [NEW] 手动搜索基金
+async function manualSearch(index: number, keyword: string) {
+  if (!keyword.trim()) return
+  
+  const holding = enhancedHoldings.value[index]
+  holding.searching = true
+  
+  try {
+    const results = await searchFund(keyword, 10)
+    holding.searchResults = results
+    holding.showSearch = true
+  } catch (error) {
+    console.error('搜索失败:', error)
+    showToast('搜索失败')
+  } finally {
+    holding.searching = false
+  }
+}
+
+// [NEW] 切换搜索面板显示
+function toggleSearchPanel(index: number) {
+  const holding = enhancedHoldings.value[index]
+  holding.showSearch = !holding.showSearch
+  
+  // 如果打开面板且没有搜索结果，自动搜索
+  if (holding.showSearch && (!holding.searchResults || holding.searchResults.length === 0)) {
+    if (holding.name) {
+      manualSearch(index, holding.name)
+    }
+  }
+}
+
 // [WHAT] 切换选中状态
 function toggleSelect(index: number) {
   const holding = enhancedHoldings.value[index]
   if (!holding.code) {
-    showToast('该项缺少基金代码')
-    return
-  }
-  if (holdingStore.hasHolding(holding.code)) {
-    showToast('该基金已在持仓中')
+    // [NEW] 没有代码时，打开搜索面板
+    toggleSearchPanel(index)
     return
   }
   holding.selected = !holding.selected
@@ -151,8 +273,9 @@ function toggleSelect(index: number) {
 
 // [WHAT] 全选/取消全选
 function toggleSelectAll() {
+  // [NEW] 包括已持有的基金（加仓）
   const validHoldings = enhancedHoldings.value.filter(
-    h => h.code && h.amount > 0 && !holdingStore.hasHolding(h.code)
+    h => h.code && h.amount > 0
   )
   const allSelected = validHoldings.every(h => h.selected)
   
@@ -183,12 +306,41 @@ async function confirmImport() {
   
   try {
     let imported = 0
+    let addedPosition = 0
     
     for (const h of toImport) {
-      // [WHAT] 构建持仓记录
       const netValue = h.netValue || 1
       const shares = h.amount / netValue
       
+      // [NEW] 检查是否是加仓
+      if (h.isAddPosition) {
+        // [WHAT] 加仓：获取现有持仓，累加金额和份额
+        const existingHolding = holdingStore.getHoldingByCode(h.code)
+        if (existingHolding) {
+          // [WHAT] 计算新的平均买入净值
+          const totalAmount = existingHolding.amount + h.amount
+          const totalShares = existingHolding.shares + shares
+          const avgNetValue = totalAmount / totalShares
+          
+          const record: HoldingRecord = {
+            code: h.code,
+            name: existingHolding.name,
+            shareClass: existingHolding.shareClass,
+            amount: totalAmount,
+            buyNetValue: avgNetValue,
+            shares: totalShares,
+            buyDate: existingHolding.buyDate, // 保留原买入日期
+            holdingDays: existingHolding.holdingDays,
+            createdAt: existingHolding.createdAt
+          }
+          
+          await holdingStore.addOrUpdateHolding(record)
+          addedPosition++
+          continue
+        }
+      }
+      
+      // [WHAT] 新建持仓
       const record: HoldingRecord = {
         code: h.code,
         name: h.name || h.fundInfo?.name || h.code,
@@ -206,8 +358,15 @@ async function confirmImport() {
     }
     
     closeToast()
-    showToast(`成功导入 ${imported} 只基金`)
-    emit('imported', imported)
+    // [NEW] 显示导入和加仓数量
+    if (addedPosition > 0 && imported > 0) {
+      showToast(`新增 ${imported} 只，加仓 ${addedPosition} 只`)
+    } else if (addedPosition > 0) {
+      showToast(`成功加仓 ${addedPosition} 只基金`)
+    } else {
+      showToast(`成功导入 ${imported} 只基金`)
+    }
+    emit('imported', imported + addedPosition)
     closeDialog()
     
   } catch (error) {
@@ -296,8 +455,9 @@ function formatAmount(amount: number): string {
         <div class="usage-tips">
           <p class="tips-title">使用提示</p>
           <ul>
-            <li>请确保截图清晰，包含基金代码和金额</li>
-            <li>支持一次导入多只基金</li>
+            <li>支持支付宝、天天基金等平台截图</li>
+            <li>没有代码的截图可通过名称自动匹配</li>
+            <li>已持有的基金可直接加仓</li>
             <li>识别后可手动修改金额</li>
           </ul>
         </div>
@@ -319,7 +479,7 @@ function formatAmount(amount: number): string {
         <div class="preview-header">
           <span>识别到 {{ enhancedHoldings.length }} 条记录</span>
           <van-button size="small" plain @click="toggleSelectAll">
-            {{ selectedCount === enhancedHoldings.filter(h => h.code && h.amount > 0 && !holdingStore.hasHolding(h.code)).length ? '取消全选' : '全选' }}
+            {{ selectedCount === enhancedHoldings.filter(h => h.code && h.amount > 0).length ? '取消全选' : '全选' }}
           </van-button>
         </div>
         
@@ -327,40 +487,86 @@ function formatAmount(amount: number): string {
           <div 
             v-for="(holding, index) in enhancedHoldings" 
             :key="index"
-            class="holding-item"
-            :class="{ selected: holding.selected, disabled: !holding.code || holdingStore.hasHolding(holding.code) }"
-            @click="toggleSelect(index)"
+            class="holding-item-wrapper"
           >
-            <div class="item-checkbox">
-              <van-checkbox 
-                :model-value="holding.selected" 
-                :disabled="!holding.code || holdingStore.hasHolding(holding.code)"
-                @click.stop
-                @update:model-value="holding.selected = $event"
-              />
-            </div>
-            <div class="item-content">
-              <div class="item-name">
-                <span class="fund-name">{{ holding.name || holding.fundInfo?.name || '未知基金' }}</span>
-                <span v-if="holding.code" class="fund-code">{{ holding.code }}</span>
-                <van-loading v-if="holding.loading" size="12" />
+            <div 
+              class="holding-item"
+              :class="{ 
+                selected: holding.selected, 
+                'needs-match': holding.needsCodeMatch && !holding.code,
+                'is-add-position': holding.isAddPosition 
+              }"
+              @click="toggleSelect(index)"
+            >
+              <div class="item-checkbox">
+                <van-checkbox 
+                  :model-value="holding.selected" 
+                  :disabled="!holding.code"
+                  @click.stop
+                  @update:model-value="holding.selected = $event"
+                />
               </div>
-              <div class="item-info">
-                <span v-if="holdingStore.hasHolding(holding.code)" class="tag-exists">已持有</span>
-                <span v-else class="confidence" :style="{ color: getConfidenceColor(holding.confidence) }">
-                  置信度 {{ Math.round(holding.confidence * 100) }}%
-                </span>
+              <div class="item-content">
+                <div class="item-name">
+                  <span class="fund-name">{{ holding.name || holding.fundInfo?.name || '未知基金' }}</span>
+                  <span v-if="holding.code" class="fund-code">{{ holding.code }}</span>
+                  <van-loading v-if="holding.loading || holding.searching" size="12" />
+                </div>
+                <div class="item-info">
+                  <!-- [NEW] 加仓标签 -->
+                  <span v-if="holding.isAddPosition" class="tag-add-position">加仓</span>
+                  <!-- [NEW] 需要匹配代码 -->
+                  <span v-else-if="!holding.code && holding.needsCodeMatch" class="tag-needs-match" @click.stop="toggleSearchPanel(index)">
+                    点击匹配
+                  </span>
+                  <span v-else class="confidence" :style="{ color: getConfidenceColor(holding.confidence) }">
+                    置信度 {{ Math.round(holding.confidence * 100) }}%
+                  </span>
+                </div>
+              </div>
+              <div class="item-amount">
+                <input 
+                  type="number" 
+                  :value="holding.amount"
+                  class="amount-input"
+                  @click.stop
+                  @input="updateAmount(index, ($event.target as HTMLInputElement).value)"
+                />
+                <span class="amount-unit">元</span>
               </div>
             </div>
-            <div class="item-amount">
-              <input 
-                type="number" 
-                :value="holding.amount"
-                class="amount-input"
-                @click.stop
-                @input="updateAmount(index, ($event.target as HTMLInputElement).value)"
-              />
-              <span class="amount-unit">元</span>
+            
+            <!-- [NEW] 搜索面板 -->
+            <div v-if="holding.showSearch" class="search-panel" @click.stop>
+              <div class="search-input-wrapper">
+                <input 
+                  type="text"
+                  class="search-input"
+                  :value="holding.name"
+                  placeholder="输入基金名称或代码搜索"
+                  @input="manualSearch(index, ($event.target as HTMLInputElement).value)"
+                />
+                <van-icon name="cross" class="close-search" @click="holding.showSearch = false" />
+              </div>
+              <div class="search-results">
+                <div v-if="holding.searching" class="search-loading">
+                  <van-loading size="20" />
+                  <span>搜索中...</span>
+                </div>
+                <div v-else-if="!holding.searchResults?.length" class="search-empty">
+                  未找到匹配的基金
+                </div>
+                <div 
+                  v-else
+                  v-for="result in holding.searchResults" 
+                  :key="result.code"
+                  class="search-result-item"
+                  @click="selectSearchResult(index, result)"
+                >
+                  <span class="result-name">{{ result.name }}</span>
+                  <span class="result-code">{{ result.code }}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -368,7 +574,7 @@ function formatAmount(amount: number): string {
         <div class="preview-footer">
           <van-button plain @click="reselectImage">重新选择</van-button>
           <van-button type="primary" :disabled="selectedCount === 0" @click="confirmImport">
-            导入 {{ selectedCount }} 只基金
+            {{ addPositionCount > 0 ? `导入 ${selectedCount - addPositionCount} / 加仓 ${addPositionCount}` : `导入 ${selectedCount} 只基金` }}
           </van-button>
         </div>
       </div>
@@ -543,6 +749,11 @@ function formatAmount(amount: number): string {
   padding: 8px 16px;
 }
 
+/* [NEW] 持仓项容器，包含搜索面板 */
+.holding-item-wrapper {
+  margin-bottom: 8px;
+}
+
 .holding-item {
   display: flex;
   align-items: center;
@@ -550,9 +761,9 @@ function formatAmount(amount: number): string {
   padding: 12px;
   background: var(--bg-primary);
   border-radius: 8px;
-  margin-bottom: 8px;
   cursor: pointer;
   transition: all 0.2s;
+  border: 1px solid transparent;
 }
 
 .holding-item.selected {
@@ -560,9 +771,16 @@ function formatAmount(amount: number): string {
   border: 1px solid var(--color-primary);
 }
 
-.holding-item.disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+/* [NEW] 需要匹配代码的样式 */
+.holding-item.needs-match {
+  border: 1px dashed var(--color-warning, #faad14);
+  background: rgba(250, 173, 20, 0.05);
+}
+
+/* [NEW] 加仓样式 */
+.holding-item.is-add-position {
+  border: 1px solid var(--color-success, #52c41a);
+  background: rgba(82, 196, 26, 0.05);
 }
 
 .item-checkbox {
@@ -609,6 +827,113 @@ function formatAmount(amount: number): string {
   background: var(--color-warning-bg, #fffbe6);
   color: var(--color-warning, #faad14);
   border-radius: 4px;
+}
+
+/* [NEW] 加仓标签 */
+.tag-add-position {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: rgba(82, 196, 26, 0.1);
+  color: var(--color-success, #52c41a);
+  border-radius: 4px;
+}
+
+/* [NEW] 需要匹配标签 */
+.tag-needs-match {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: rgba(250, 173, 20, 0.1);
+  color: var(--color-warning, #faad14);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tag-needs-match:active {
+  background: rgba(250, 173, 20, 0.2);
+}
+
+/* [NEW] 搜索面板样式 */
+.search-panel {
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--bg-primary);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.search-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.search-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.close-search {
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.search-results {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.search-loading,
+.search-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.search-result-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.search-result-item:hover,
+.search-result-item:active {
+  background: var(--color-primary-bg);
+}
+
+.result-name {
+  font-size: 14px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.result-code {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-left: 8px;
+  flex-shrink: 0;
 }
 
 .item-amount {

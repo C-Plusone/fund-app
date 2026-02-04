@@ -8,8 +8,8 @@ import { useTradeStore } from '@/stores/trade'
 import { searchFund, fetchFundEstimate } from '@/api/fund'
 import { formatMoney } from '@/utils/format'
 import { showConfirmDialog, showToast, showLoadingToast, closeToast } from 'vant'
-import type { TradeType, FundInfo } from '@/types/fund'
-import { TRADE_TYPE_CONFIG } from '@/types/fund'
+import type { TradeType, TradeStatus, FundInfo } from '@/types/fund'
+import { TRADE_TYPE_CONFIG, TRADE_STATUS_CONFIG } from '@/types/fund'
 
 const router = useRouter()
 const tradeStore = useTradeStore()
@@ -24,12 +24,37 @@ const filterTypes = [
   { key: 'auto_invest', label: '定投' }
 ]
 
+// [FIX] #62 按基金筛选
+const filterFundCode = ref<string>('all')
+const showFundFilter = ref(false)
+
+// [FIX] #62 获取所有交易涉及的基金列表
+const tradedFunds = computed(() => {
+  const fundMap = new Map<string, string>()
+  tradeStore.trades.forEach(t => {
+    if (!fundMap.has(t.code)) {
+      fundMap.set(t.code, t.name)
+    }
+  })
+  return Array.from(fundMap.entries()).map(([code, name]) => ({ code, name }))
+})
+
 // [WHAT] 过滤后的交易记录
+// [FIX] #62 支持按基金和类型双重筛选
 const filteredTrades = computed(() => {
-  if (filterType.value === 'all') {
-    return tradeStore.sortedTrades
+  let result = tradeStore.sortedTrades
+  
+  // 按类型筛选
+  if (filterType.value !== 'all') {
+    result = result.filter(t => t.type === filterType.value)
   }
-  return tradeStore.sortedTrades.filter(t => t.type === filterType.value)
+  
+  // 按基金筛选
+  if (filterFundCode.value !== 'all') {
+    result = result.filter(t => t.code === filterFundCode.value)
+  }
+  
+  return result
 })
 
 // ========== 添加交易弹窗 ==========
@@ -43,7 +68,8 @@ const tradeForm = ref({
   netValue: '',
   shares: '',
   fee: '0',
-  remark: ''
+  remark: '',
+  status: 'completed' as TradeStatus  // [FIX] #64 定投状态
 })
 
 // 基金搜索相关
@@ -104,7 +130,8 @@ function openAddDialog(type: TradeType = 'buy') {
     netValue: '',
     shares: '',
     fee: '0',
-    remark: ''
+    remark: '',
+    status: type === 'auto_invest' ? 'pending' : 'completed'  // [FIX] #64 定投默认待执行
   }
   selectedFund.value = null
   searchKeyword.value = ''
@@ -151,6 +178,18 @@ function submitTrade() {
       amount,
       remark: tradeForm.value.remark
     })
+  } else if (tradeForm.value.type === 'auto_invest') {
+    // [FIX] #64 定投使用专门的方法，支持状态
+    tradeStore.addAutoInvestTrade({
+      code: tradeForm.value.code,
+      name: tradeForm.value.name,
+      date: tradeForm.value.date,
+      amount,
+      netValue,
+      fee,
+      remark: tradeForm.value.remark,
+      status: tradeForm.value.status
+    })
   } else {
     tradeStore.addBuyTrade({
       code: tradeForm.value.code,
@@ -189,6 +228,12 @@ function goBack() {
 // [WHAT] 获取交易类型配置
 function getTypeConfig(type: TradeType) {
   return TRADE_TYPE_CONFIG[type]
+}
+
+// [FIX] #64 获取交易状态配置
+function getStatusConfig(status?: TradeStatus) {
+  if (!status) return null
+  return TRADE_STATUS_CONFIG[status]
 }
 </script>
 
@@ -236,6 +281,16 @@ function getTypeConfig(type: TradeType) {
       >
         {{ f.label }}
       </div>
+      <!-- [FIX] #62 基金筛选 -->
+      <div class="filter-divider"></div>
+      <div 
+        class="filter-tab fund-filter"
+        :class="{ active: filterFundCode !== 'all' }"
+        @click="showFundFilter = true"
+      >
+        {{ filterFundCode === 'all' ? '全部基金' : tradedFunds.find(f => f.code === filterFundCode)?.name || filterFundCode }}
+        <van-icon name="arrow-down" size="10" />
+      </div>
     </div>
 
     <!-- 交易列表 -->
@@ -246,6 +301,15 @@ function getTypeConfig(type: TradeType) {
             <div class="trade-left">
               <div class="trade-type" :style="{ color: getTypeConfig(trade.type).color }">
                 {{ getTypeConfig(trade.type).label }}
+                <!-- [FIX] #64 显示定投状态 -->
+                <span 
+                  v-if="trade.type === 'auto_invest' && trade.status && getStatusConfig(trade.status)"
+                  class="trade-status"
+                  :style="{ color: getStatusConfig(trade.status)!.color }"
+                >
+                  <van-icon :name="getStatusConfig(trade.status)!.icon" size="12" />
+                  {{ getStatusConfig(trade.status)!.label }}
+                </span>
               </div>
               <div class="trade-fund">{{ trade.name }}</div>
               <div class="trade-date">{{ trade.date }}</div>
@@ -363,6 +427,17 @@ function getTypeConfig(type: TradeType) {
             <span>预估份额：{{ calculatedShares.toFixed(2) }} 份</span>
           </div>
 
+          <!-- [FIX] #64 定投状态选择 -->
+          <van-field v-if="tradeForm.type === 'auto_invest'" label="交易状态">
+            <template #input>
+              <van-radio-group v-model="tradeForm.status" direction="horizontal">
+                <van-radio name="pending">待执行</van-radio>
+                <van-radio name="processing">执行中</van-radio>
+                <van-radio name="completed">已完成</van-radio>
+              </van-radio-group>
+            </template>
+          </van-field>
+
           <!-- 备注 -->
           <van-field
             v-model="tradeForm.remark"
@@ -373,6 +448,39 @@ function getTypeConfig(type: TradeType) {
 
         <div class="dialog-footer">
           <van-button block type="primary" @click="submitTrade">确认添加</van-button>
+        </div>
+      </div>
+    </van-popup>
+    
+    <!-- [FIX] #62 基金筛选弹窗 -->
+    <van-popup v-model:show="showFundFilter" position="bottom" round :style="{ maxHeight: '50%' }">
+      <div class="fund-filter-popup">
+        <div class="popup-header">
+          <span>选择基金</span>
+          <van-icon name="cross" @click="showFundFilter = false" />
+        </div>
+        <div class="fund-filter-list">
+          <div 
+            class="fund-filter-item"
+            :class="{ active: filterFundCode === 'all' }"
+            @click="filterFundCode = 'all'; showFundFilter = false"
+          >
+            <span class="fund-name">全部基金</span>
+            <van-icon v-if="filterFundCode === 'all'" name="success" color="var(--color-primary)" />
+          </div>
+          <div 
+            v-for="fund in tradedFunds"
+            :key="fund.code"
+            class="fund-filter-item"
+            :class="{ active: filterFundCode === fund.code }"
+            @click="filterFundCode = fund.code; showFundFilter = false"
+          >
+            <div class="fund-info">
+              <span class="fund-name">{{ fund.name }}</span>
+              <span class="fund-code">{{ fund.code }}</span>
+            </div>
+            <van-icon v-if="filterFundCode === fund.code" name="success" color="var(--color-primary)" />
+          </div>
         </div>
       </div>
     </van-popup>
@@ -448,6 +556,71 @@ function getTypeConfig(type: TradeType) {
   background: var(--color-primary);
 }
 
+/* [FIX] #62 基金筛选样式 */
+.filter-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-color);
+  margin: 0 4px;
+}
+
+.fund-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fund-filter-popup {
+  padding: 16px;
+}
+
+.popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.fund-filter-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.fund-filter-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+}
+
+.fund-filter-item:active {
+  background: var(--bg-tertiary);
+}
+
+.fund-filter-item .fund-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fund-filter-item .fund-name {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.fund-filter-item .fund-code {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 /* 交易列表 */
 .trade-list {
   background: var(--bg-secondary);
@@ -465,9 +638,24 @@ function getTypeConfig(type: TradeType) {
 }
 
 .trade-type {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   font-weight: 500;
   margin-bottom: 4px;
+}
+
+/* [FIX] #64 定投状态样式 */
+.trade-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  font-weight: normal;
 }
 
 .trade-fund {

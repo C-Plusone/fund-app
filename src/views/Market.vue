@@ -4,7 +4,7 @@
 
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { fetchMarketIndicesFast, type MarketIndexSimple } from '@/api/fundFast'
+import { fetchMarketIndicesFast, fetchGlobalIndices, type MarketIndexSimple, type GlobalIndex } from '@/api/fundFast'
 import { 
   fetchMarketOverview, fetchOTCFundRank, fetchSectorFunds, fetchETFRank,
   type MarketOverview, type OTCFundItem, type SectorInfo, type ETFItem, type FundDistribution
@@ -20,6 +20,11 @@ const isRefreshing = ref(false)
 // ========== 大盘指数 ==========
 const indices = ref<MarketIndexSimple[]>([])
 const indicesLoading = ref(true)
+
+// [FIX] #34 全球指数
+const globalIndices = ref<GlobalIndex[]>([])
+const globalLoading = ref(true)
+const showGlobalSection = ref(true)
 
 // ========== 市场概况 ==========
 const overview = ref<MarketOverview | null>(null)
@@ -59,6 +64,18 @@ async function loadIndices() {
     // 静默失败
   } finally {
     indicesLoading.value = false
+  }
+}
+
+// [FIX] #34 加载全球指数
+async function loadGlobalIndices() {
+  globalLoading.value = true
+  try {
+    globalIndices.value = await fetchGlobalIndices()
+  } catch {
+    // 静默失败
+  } finally {
+    globalLoading.value = false
   }
 }
 
@@ -144,6 +161,7 @@ async function onRefresh() {
   try {
     await Promise.all([
       loadIndices(),
+      loadGlobalIndices(),  // [FIX] #34
       loadOverview(),
       loadOTCFunds(),
       loadSectors(),
@@ -191,6 +209,7 @@ function getBarColor(range: string): string {
 
 onMounted(() => {
   loadIndices()
+  loadGlobalIndices()  // [FIX] #34
   loadOverview()
   loadOTCFunds()
   loadSectors()
@@ -278,6 +297,41 @@ onMounted(() => {
           </div>
         </div>
         <van-loading v-else class="loading-box" />
+      </div>
+      
+      <!-- [FIX] #34 全球指数 -->
+      <div class="section" v-if="globalIndices.length > 0 || globalLoading">
+        <div class="section-header" @click="showGlobalSection = !showGlobalSection">
+          <span class="section-title">全球指数</span>
+          <van-icon :name="showGlobalSection ? 'arrow-up' : 'arrow-down'" />
+        </div>
+        
+        <div class="global-indices-grid" v-if="!globalLoading && showGlobalSection">
+          <div 
+            v-for="idx in globalIndices" 
+            :key="idx.code"
+            class="global-index-card"
+            :class="idx.price > 0 ? (idx.changePercent >= 0 ? 'up' : 'down') : 'no-data'"
+          >
+            <div class="global-index-header">
+              <span class="region-tag" :class="idx.region">{{ 
+                idx.region === 'cn' ? '中' : 
+                idx.region === 'hk' ? '港' : 
+                idx.region === 'us' ? '美' : 
+                idx.region === 'eu' ? '欧' : '亚' 
+              }}</span>
+              <span class="global-index-name">{{ idx.name }}</span>
+            </div>
+            <div class="global-index-values" v-if="idx.price > 0">
+              <span class="global-index-price">{{ idx.price > 1000 ? idx.price.toFixed(0) : idx.price.toFixed(2) }}</span>
+              <span class="global-index-change">{{ idx.changePercent >= 0 ? '+' : '' }}{{ idx.changePercent.toFixed(2) }}%</span>
+            </div>
+            <div class="global-index-values no-data-text" v-else>
+              <span>暂无数据</span>
+            </div>
+          </div>
+        </div>
+        <van-loading v-if="globalLoading" class="loading-box" />
       </div>
 
       <!-- 场外基金 -->
@@ -792,5 +846,86 @@ onMounted(() => {
 
 .sector-popup-actions {
   padding-top: 8px;
+}
+
+/* [FIX] #34 全球指数样式 */
+.global-indices-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  padding: 0 12px;
+}
+
+.global-index-card {
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.global-index-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.region-tag {
+  font-size: 10px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.region-tag.cn { background: #fee2e2; color: #dc2626; }
+.region-tag.hk { background: #fef3c7; color: #d97706; }
+.region-tag.us { background: #dbeafe; color: #2563eb; }
+.region-tag.eu { background: #e0e7ff; color: #4f46e5; }
+.region-tag.asia { background: #d1fae5; color: #059669; }
+
+.global-index-name {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.global-index-values {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.global-index-price {
+  font-size: 15px;
+  font-weight: 600;
+  font-family: -apple-system, 'SF Mono', monospace;
+}
+
+.global-index-change {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: -apple-system, 'SF Mono', monospace;
+}
+
+.global-index-card.up .global-index-price,
+.global-index-card.up .global-index-change {
+  color: var(--color-up);
+}
+
+.global-index-card.down .global-index-price,
+.global-index-card.down .global-index-change {
+  color: var(--color-down);
+}
+
+.global-index-card.no-data {
+  opacity: 0.6;
+}
+
+.global-index-values.no-data-text {
+  justify-content: center;
+}
+
+.global-index-values.no-data-text span {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 </style>

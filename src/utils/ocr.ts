@@ -8,7 +8,7 @@ import Tesseract from 'tesseract.js'
  * 识别结果中的持仓项
  */
 export interface RecognizedHolding {
-  /** 基金代码（6位数字） */
+  /** 基金代码（6位数字），可能为空（需要通过名称搜索） */
   code: string
   /** 基金名称 */
   name: string
@@ -18,6 +18,8 @@ export interface RecognizedHolding {
   shares?: number
   /** 识别置信度（0-1） */
   confidence: number
+  /** 是否需要手动匹配代码（名称识别但无代码） */
+  needsCodeMatch?: boolean
 }
 
 /**
@@ -84,6 +86,28 @@ export function parseHoldingText(text: string): RecognizedHolding[] {
   if (holdings.length === 0) {
     const multiLineHoldings = parseMultiLine(lines)
     holdings.push(...multiLineHoldings)
+  }
+  
+  // [NEW] 如果仍然没有结果，尝试支付宝格式解析（只有名称没有代码）
+  if (holdings.length === 0) {
+    const alipayHoldings = parseAlipayFormat(lines)
+    holdings.push(...alipayHoldings)
+  }
+  
+  // [NEW] 对于有代码的结果，也尝试补充支付宝格式解析的结果
+  // 因为可能部分有代码部分没有
+  if (holdings.length > 0 && holdings.every(h => h.code)) {
+    const alipayHoldings = parseAlipayFormat(lines)
+    // 只添加名称不重复的
+    for (const ah of alipayHoldings) {
+      const exists = holdings.some(h => 
+        h.name === ah.name || 
+        (h.name && ah.name && h.name.includes(ah.name.substring(0, 4)))
+      )
+      if (!exists) {
+        holdings.push(ah)
+      }
+    }
   }
   
   return holdings
@@ -184,11 +208,78 @@ function parseSingleLine(line: string): RecognizedHolding | null {
       code: codeMatch ? codeMatch[0] : '',
       name: cleanFundName(match4[1]),
       amount: parseAmount(match4[2]),
-      confidence: 0.6
+      confidence: codeMatch ? 0.6 : 0.5,
+      needsCodeMatch: !codeMatch // [NEW] 标记需要手动匹配代码
     }
   }
   
   return null
+}
+
+/**
+ * 解析支付宝持仓截图格式（只有名称没有代码）
+ * [WHY] 支付宝持仓页面不显示基金代码，只显示名称和金额
+ * [WHAT] 专门解析 "基金名称" + "金额" 的格式
+ */
+function parseAlipayFormat(lines: string[]): RecognizedHolding[] {
+  const holdings: RecognizedHolding[] = []
+  
+  // [WHAT] 支付宝常见的基金名称关键词
+  const fundKeywords = ['混合', 'ETF', '联接', '指数', '债券', '股票', '增强', 'LOF', 'QDII', '主题', '精选', '成长', '价值', '量化', '稳健', '纯债', '短债', '定开', '创新', '科技', '消费', '医药', '新能源', '半导体', '智选', '优选', '龙头', '增利']
+  
+  // [WHAT] 需要排除的非基金名称关键词
+  const excludeKeywords = ['持有', '收益', '金额', '份额', '净值', '估值', '日收益', '持有收益', '累计收益', '我的', '全部', '偏股', '偏债', '黄金', '排序', '名称', '添加', '管理']
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
+    if (!line) continue
+    
+    // [WHAT] 检查是否包含基金名称关键词
+    const isFundName = fundKeywords.some(kw => line.includes(kw))
+    const isExcluded = excludeKeywords.some(kw => line.includes(kw) && !fundKeywords.some(fkw => line.includes(fkw)))
+    
+    if (isFundName && !isExcluded && line.length >= 4 && line.length <= 30) {
+      // [WHAT] 尝试从当前行或附近行提取金额
+      let amount = 0
+      
+      // 检查当前行是否包含金额
+      const amountInLine = line.match(/[\d,]+\.\d{2}/)
+      if (amountInLine) {
+        amount = parseAmount(amountInLine[0])
+      }
+      
+      // 检查下几行是否有金额
+      if (amount === 0) {
+        for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+          const nextLine = lines[j].trim()
+          const amountMatch = nextLine.match(/^[¥￥]?\s*([\d,]+\.\d{2})/)
+          if (amountMatch) {
+            amount = parseAmount(amountMatch[1])
+            break
+          }
+        }
+      }
+      
+      // [WHAT] 清理基金名称
+      const cleanedName = cleanFundName(line.replace(/[\d,]+\.\d{2}/, '').trim())
+      
+      if (cleanedName.length >= 3 && amount >= 10) {
+        // [WHAT] 检查是否已添加相同名称
+        const exists = holdings.some(h => h.name === cleanedName)
+        if (!exists) {
+          holdings.push({
+            code: '',
+            name: cleanedName,
+            amount,
+            confidence: 0.5,
+            needsCodeMatch: true // [WHAT] 标记需要手动匹配代码
+          })
+        }
+      }
+    }
+  }
+  
+  return holdings
 }
 
 /**

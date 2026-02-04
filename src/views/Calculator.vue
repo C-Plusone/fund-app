@@ -2,27 +2,65 @@
 // [WHY] 定投计算器页面 - 模拟定投收益
 // [WHAT] 输入参数计算定投收益，支持多种定投策略
 
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { showToast } from 'vant'
 
 const router = useRouter()
+const route = useRoute()
 
 // [WHAT] 定投参数
 const investAmount = ref(1000) // 每期金额
 const investPeriod = ref<'week' | 'month'>('month') // 定投周期
 const totalMonths = ref(36) // 定投月数
 const expectedReturn = ref(10) // 预期年化收益率(%)
+// [FIX] #43 关联基金信息
+const linkedFundCode = ref('')
+const linkedFundName = ref('')
+
+// [FIX] #43 从路由参数初始化
+onMounted(() => {
+  // 支持从其他页面传入参数
+  if (route.query.code) {
+    linkedFundCode.value = route.query.code as string
+  }
+  if (route.query.name) {
+    linkedFundName.value = route.query.name as string
+  }
+  if (route.query.amount) {
+    const amount = parseInt(route.query.amount as string)
+    if (!isNaN(amount) && amount > 0) {
+      investAmount.value = amount
+    }
+  }
+  if (route.query.period) {
+    const period = route.query.period as string
+    if (period === 'week' || period === 'month') {
+      investPeriod.value = period
+    }
+  }
+  if (route.query.months) {
+    const months = parseInt(route.query.months as string)
+    if (!isNaN(months) && months > 0) {
+      totalMonths.value = months
+    }
+  }
+})
 
 // [WHAT] 计算结果
+// [FIX] #44 修复每周定投周期计算逻辑
 const result = computed(() => {
   const amount = investAmount.value
   const months = totalMonths.value
   const annualRate = expectedReturn.value / 100
   
-  // 每期数量
+  // [FIX] #44 使用更精确的周期计算
+  // 每年52周，每月约4.345周
   const periodsPerYear = investPeriod.value === 'week' ? 52 : 12
-  const totalPeriods = investPeriod.value === 'week' ? Math.floor(months * 4.33) : months
+  // 计算总期数：每周定投使用 52/12 * months 更精确
+  const totalPeriods = investPeriod.value === 'week' 
+    ? Math.round(months * 52 / 12)  // 使用 round 而不是 floor，更准确
+    : months
   const periodRate = annualRate / periodsPerYear
   
   // 总投入
@@ -47,7 +85,9 @@ const result = computed(() => {
     finalValue,
     totalProfit,
     profitRate,
-    totalPeriods
+    totalPeriods,
+    // [FIX] #44 显示定投描述
+    periodDesc: investPeriod.value === 'week' ? `${totalPeriods}周` : `${totalPeriods}月`
   }
 })
 
@@ -73,9 +113,21 @@ function goBack() {
 }
 
 // [WHAT] 开始定投（跳转到搜索选基金）
+// [FIX] #43 保持关联状态
 function startInvest() {
-  showToast('请先选择定投基金')
-  router.push('/search')
+  if (linkedFundCode.value) {
+    // 如果已选择基金，跳转到详情页
+    router.push(`/detail/${linkedFundCode.value}`)
+  } else {
+    showToast('请先选择定投基金')
+    router.push('/search')
+  }
+}
+
+// [FIX] #43 清除关联基金
+function clearLinkedFund() {
+  linkedFundCode.value = ''
+  linkedFundName.value = ''
 }
 </script>
 
@@ -385,7 +437,7 @@ function startInvest() {
   margin-bottom: 8px;
 }
 
-/* 底部按钮 */
+/* [FIX] #37 底部按钮层级问题 */
 .bottom-action {
   position: fixed;
   bottom: 0;
@@ -395,5 +447,7 @@ function startInvest() {
   padding-bottom: max(12px, env(safe-area-inset-bottom));
   background: var(--bg-secondary);
   border-top: 1px solid var(--border-color);
+  z-index: 100;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
 }
 </style>

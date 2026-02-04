@@ -126,7 +126,7 @@ export function initMobileDefaultCache(): void {
   }
   
   persistCache.set(cacheKey, defaultData)
-  console.log('[Cache] 初始化移动端默认市场数据')
+  // 静默初始化
 }
 
 /**
@@ -326,21 +326,68 @@ export async function fetchFundRankExt(options: {
 export async function fetchPeriodReturnExt(code: string): Promise<PeriodReturnExt[]> {
   const cacheKey = `period_ext_${code}`
   const cached = cache.get<PeriodReturnExt[]>(cacheKey)
-  if (cached) return cached
+  if (cached && cached.length > 0) return cached
   
+  // [WHAT] 检查 localStorage 持久化缓存
+  const persistKey = `fund_period_ext_${code}`
+  try {
+    const persistCached = localStorage.getItem(persistKey)
+    if (persistCached) {
+      const parsed = JSON.parse(persistCached)
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        cache.set(cacheKey, parsed, CACHE_TTL.NET_VALUE)
+        // [WHY] 返回缓存但同时后台刷新
+        fetchPeriodReturnExtFromApi(code).then(fresh => {
+          if (fresh.length > 0) {
+            cache.set(cacheKey, fresh, CACHE_TTL.NET_VALUE)
+            localStorage.setItem(persistKey, JSON.stringify(fresh))
+          }
+        }).catch(() => {})
+        return parsed
+      }
+    }
+  } catch {}
+  
+  // [WHAT] 从 API 获取
+  const result = await fetchPeriodReturnExtFromApi(code)
+  if (result.length > 0) {
+    cache.set(cacheKey, result, CACHE_TTL.NET_VALUE)
+    localStorage.setItem(persistKey, JSON.stringify(result))
+  }
+  return result
+}
+
+/**
+ * [WHAT] 从天天基金 API 获取阶段涨幅数据
+ * [WHY] 支持多个数据源，提高数据获取成功率
+ */
+async function fetchPeriodReturnExtFromApi(code: string): Promise<PeriodReturnExt[]> {
   return new Promise((resolve) => {
     const scriptId = `period_${code}_${Date.now()}`
+    let resolved = false
     
     const script = document.createElement('script')
     script.id = scriptId
     script.src = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`
     
+    // [WHAT] 超时保护
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true
+        cleanup()
+        // 静默超时，不输出日志
+        resolve([])
+      }
+    }, 8000)
+    
     script.onload = () => {
+      if (resolved) return
+      resolved = true
+      clearTimeout(timeout)
       cleanup()
       
       try {
-        // [WHAT] 从全局变量获取数据
-        const periodData = (window as any).Data_rateInSimilarPers498 || []
+        const result: PeriodReturnExt[] = []
         
         // [WHAT] API原始key -> 标准化period -> 显示标签
         const periodConfig: Record<string, { period: string, label: string }> = {
@@ -356,10 +403,13 @@ export async function fetchPeriodReturnExt(code: string): Promise<PeriodReturnEx
           'LN': { period: 'all', label: '成立来' }
         }
         
-        const result: PeriodReturnExt[] = []
+        // [WHAT] 尝试多个可能的数据源
+        const periodData = (window as any).Data_rateInSimilarPers498 
+          || (window as any).Data_rateInSimilarType
+          || []
         
         // [WHAT] 解析阶段涨幅数据，转换为标准化格式
-        if (Array.isArray(periodData)) {
+        if (Array.isArray(periodData) && periodData.length > 0) {
           periodData.forEach((item: any) => {
             const config = periodConfig[item.title]
             if (config) {
@@ -376,25 +426,103 @@ export async function fetchPeriodReturnExt(code: string): Promise<PeriodReturnEx
           })
         }
         
-        cache.set(cacheKey, result, CACHE_TTL.NET_VALUE)
+        // [WHAT] 如果主数据源没数据，尝试从净值趋势数据计算
+        if (result.length === 0) {
+          const netWorthTrend = (window as any).Data_netWorthTrend || []
+          if (Array.isArray(netWorthTrend) && netWorthTrend.length > 0) {
+            const calculated = calculateReturnsFromNetWorth(netWorthTrend)
+            result.push(...calculated)
+          }
+        }
+        
+        // 静默处理，不输出日志以减少控制台噪音
+        
         resolve(result)
-      } catch {
+      } catch (err) {
+        console.error(`[PeriodReturn] 解析 ${code} 数据失败:`, err)
         resolve([])
       }
     }
     
     script.onerror = () => {
+      if (resolved) return
+      resolved = true
+      clearTimeout(timeout)
       cleanup()
+      // 静默失败，不输出日志
       resolve([])
     }
     
     function cleanup() {
       const s = document.getElementById(scriptId)
-      if (s) document.body.removeChild(s)
+      if (s && s.parentNode) s.parentNode.removeChild(s)
+      // [WHAT] 清理全局变量避免污染
+      // [FIX] 使用 try-catch 避免某些浏览器不允许删除全局变量的错误
+      try {
+        delete (window as any).Data_rateInSimilarPers498
+        delete (window as any).Data_rateInSimilarType
+        delete (window as any).Data_netWorthTrend
+      } catch {
+        // 忽略删除失败
+        (window as any).Data_rateInSimilarPers498 = undefined
+        ;(window as any).Data_rateInSimilarType = undefined
+        ;(window as any).Data_netWorthTrend = undefined
+      }
     }
     
     document.body.appendChild(script)
   })
+}
+
+/**
+ * [WHAT] 从净值趋势数据计算各周期收益率
+ * [WHY] 备用方案，当 Data_rateInSimilarPers498 不可用时使用
+ */
+function calculateReturnsFromNetWorth(netWorthTrend: Array<{x: number, y: number}>): PeriodReturnExt[] {
+  if (!Array.isArray(netWorthTrend) || netWorthTrend.length < 2) return []
+  
+  const result: PeriodReturnExt[] = []
+  const now = Date.now()
+  const latestValue = netWorthTrend[netWorthTrend.length - 1]?.y || 0
+  
+  if (latestValue <= 0) return []
+  
+  const periods = [
+    { period: '1w', label: '近1周', days: 7 },
+    { period: '1m', label: '近1月', days: 30 },
+    { period: '3m', label: '近3月', days: 90 },
+    { period: '6m', label: '近6月', days: 180 },
+    { period: '1y', label: '近1年', days: 365 },
+    { period: '3y', label: '近3年', days: 1095 }
+  ]
+  
+  periods.forEach(({ period, label, days }) => {
+    const targetTime = now - days * 24 * 60 * 60 * 1000
+    // [WHAT] 找到最接近目标时间的数据点
+    let closestPoint = netWorthTrend[0]
+    for (const point of netWorthTrend) {
+      if (point.x <= targetTime) {
+        closestPoint = point
+      } else {
+        break
+      }
+    }
+    
+    if (closestPoint && closestPoint.y > 0) {
+      const fundReturn = ((latestValue - closestPoint.y) / closestPoint.y) * 100
+      result.push({
+        period,
+        label,
+        fundReturn: Math.round(fundReturn * 100) / 100,
+        avgReturn: 0,
+        hs300Return: 0,
+        rank: 0,
+        totalCount: 0
+      })
+    }
+  })
+  
+  return result
 }
 
 // ========== 热门主题/板块 ==========
@@ -831,7 +959,6 @@ export async function fetchMarketOverview(): Promise<MarketOverview> {
   // [WHAT] 非交易时间直接返回持久化缓存（周末/节假日/盘前盘后）
   if (!isTradingTime()) {
     if (persisted && (persisted.totalUp > 0 || persisted.totalDown > 0)) {
-      console.log('[MarketOverview] 非交易时间，使用缓存数据')
       cache.set(cacheKey, persisted, CACHE_TTL.MARKET_INDEX)
       return persisted
     }
@@ -847,14 +974,11 @@ export async function fetchMarketOverview(): Promise<MarketOverview> {
   // [WHAT] 移动端优先使用缓存（WebView JSONP 可能受限）
   // [WHY] Android WebView 可能阻止跨域脚本加载
   if (isNativeApp && persisted && persisted.totalUp > 0) {
-    console.log('[MarketOverview] 移动端使用缓存数据')
     cache.set(cacheKey, persisted, CACHE_TTL.MARKET_INDEX)
     // [NOTE] 仍然尝试后台更新，但立即返回缓存
     fetchMarketOverviewInBackground(persisted)
     return persisted
   }
-  
-  console.log('[MarketOverview] 开始获取数据, 原生环境:', isNativeApp)
   
   // [WHAT] 固定的区间分布
   // [NOTE] 使用 -0.001 作为边界，避免 change=0 被错误分类
@@ -883,7 +1007,7 @@ export async function fetchMarketOverview(): Promise<MarketOverview> {
     const scriptId = `overview_script_${Date.now()}`
     
     // [WHAT] 清除旧的 rankData
-    delete (window as any).rankData
+    try { delete (window as any).rankData } catch { (window as any).rankData = undefined }
     
     const script = document.createElement('script')
     script.id = scriptId
@@ -997,7 +1121,7 @@ function fetchMarketOverviewInBackground(currentData: MarketOverview): void {
   const cacheKey = 'market_overview_v2'
   
   const scriptId = `bg_overview_${Date.now()}`
-  delete (window as any).rankData
+  try { delete (window as any).rankData } catch { (window as any).rankData = undefined }
   
   const script = document.createElement('script')
   script.id = scriptId
@@ -1063,7 +1187,6 @@ function fetchMarketOverviewInBackground(currentData: MarketOverview): void {
           }
           cache.set(cacheKey, result, CACHE_TTL.MARKET_INDEX)
           persistCache.set(cacheKey, result)
-          console.log('[MarketOverview] 后台更新成功')
         }
       } catch {
         // 静默失败
@@ -1103,7 +1226,7 @@ export async function fetchOTCFundRank(order: 'desc' | 'asc' = 'desc', pageSize 
     const scriptId = `otc_script_${Date.now()}`
     
     // [WHAT] 清除旧的 rankData
-    delete (window as any).rankData
+    try { delete (window as any).rankData } catch { (window as any).rankData = undefined }
     
     const script = document.createElement('script')
     script.id = scriptId
@@ -1182,6 +1305,7 @@ export interface SectorInfo {
 
 /**
  * 获取热门板块及基金列表
+ * [FIX] #47 修复板块数据获取和展示
  */
 export async function fetchSectorFunds(): Promise<SectorInfo[]> {
   const cacheKey = 'sector_funds'
@@ -1189,8 +1313,9 @@ export async function fetchSectorFunds(): Promise<SectorInfo[]> {
   if (cached) return cached
   
   try {
-    // [WHAT] 获取行业板块
-    const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=10&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f2,f3,f4,f12,f14&_=${Date.now()}`
+    // [WHAT] 获取行业板块（包含更多字段）
+    // f3: 涨跌幅, f104: 上涨家数, f105: 下跌家数, f128: 领涨股
+    const url = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=10&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:2&fields=f2,f3,f4,f12,f14,f104,f105,f128&_=${Date.now()}`
     
     const response = await fetch(url)
     const data = await response.json()
@@ -1198,14 +1323,31 @@ export async function fetchSectorFunds(): Promise<SectorInfo[]> {
     if (!data?.data?.diff) return []
     
     const sectors: SectorInfo[] = data.data.diff.slice(0, 6).map((item: any) => {
-      // [WHAT] 确保 dayReturn 是数字类型
+      // [FIX] #47 确保数据正确解析
       const dayReturn = parseFloat(item.f3) || 0
+      const upCount = parseInt(item.f104) || 0
+      const downCount = parseInt(item.f105) || 0
+      
+      // [FIX] #47 生成更有意义的描述
+      let streak = ''
+      if (dayReturn > 3) {
+        streak = '大涨'
+      } else if (dayReturn > 0) {
+        streak = `涨 ${upCount}只`
+      } else if (dayReturn < -3) {
+        streak = '大跌'
+      } else if (dayReturn < 0) {
+        streak = `跌 ${downCount}只`
+      } else {
+        streak = '持平'
+      }
+      
       return {
-        code: item.f12 || '',  // 板块代码
+        code: item.f12 || '',
         name: item.f14 || '',
-        streak: dayReturn > 0 ? '连涨1天' : (dayReturn < 0 ? '连跌1天' : ''),
+        streak,
         dayReturn,
-        funds: [] // 先留空，后续可扩展
+        funds: []
       }
     })
     
@@ -1714,34 +1856,52 @@ export async function fetchFundScale(fundCode: string): Promise<FundScale> {
     personalRatio: 100
   }
   
-  try {
-    // [WHAT] 使用JSONP获取基金基本信息（包含规模）
-    const cbName = `scale_cb_${Date.now()}`
-    const url = `https://fundgz.1234567.com.cn/js/${fundCode}.js?rt=${Date.now()}`
+  // [FIX] 天天基金估值接口不包含规模数据，且使用 fetch 会触发 CORS 错误
+  // [WHAT] 改用 JSONP 方式从 pingzhongdata 获取规模信息
+  return new Promise((resolve) => {
+    const scriptId = `scale_${fundCode}_${Date.now()}`
+    const timeout = setTimeout(() => {
+      cleanup()
+      cache.set(cacheKey, defaultScale, CACHE_TTL.LONG)
+      resolve(defaultScale)
+    }, 5000)
     
-    // [WHAT] 尝试从估值接口获取规模信息
-    // 该接口返回的是js变量赋值，不是标准JSONP，需要特殊处理
-    const response = await fetch(url).catch(() => null)
-    if (response) {
-      const text = await response.text()
-      // [WHAT] 解析 jsonpgz({...}) 格式
-      const match = text.match(/jsonpgz\(([\s\S]*)\)/)
-      if (match) {
-        const data = JSON.parse(match[1])
-        // 估值接口不包含规模，返回默认值
-        // 但可以确认基金存在
-        if (data.fundcode) {
-          cache.set(cacheKey, defaultScale, CACHE_TTL.LONG)
-          return defaultScale
-        }
+    const script = document.createElement('script')
+    script.id = scriptId
+    script.src = `https://fund.eastmoney.com/pingzhongdata/${fundCode}.js?v=${Date.now()}`
+    
+    script.onload = () => {
+      clearTimeout(timeout)
+      try {
+        // [WHAT] pingzhongdata 包含 Data_assetAllocation（资产配置）
+        const assetData = (window as any).Data_assetAllocation
+        
+        // [WHAT] 从资产配置推算大致规模（实际规模数据需要其他接口）
+        // pingzhongdata 不直接包含规模，返回默认值
+        const result: FundScale = { ...defaultScale }
+        
+        cache.set(cacheKey, result, CACHE_TTL.LONG)
+        resolve(result)
+      } catch {
+        resolve(defaultScale)
+      } finally {
+        cleanup()
       }
     }
     
-    return defaultScale
-  } catch (error) {
-    console.error('[API] 获取基金规模失败:', error)
-    return defaultScale
-  }
+    script.onerror = () => {
+      cleanup()
+      resolve(defaultScale)
+    }
+    
+    function cleanup() {
+      clearTimeout(timeout)
+      const s = document.getElementById(scriptId)
+      if (s && s.parentNode) s.parentNode.removeChild(s)
+    }
+    
+    document.body.appendChild(script)
+  })
 }
 
 // ========== 基金风格分析 API ==========

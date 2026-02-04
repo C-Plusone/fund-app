@@ -118,6 +118,7 @@ export function fetchFundEstimateFast(code: string): Promise<FundEstimate> {
       initJsonpCallback()
       
       const scriptId = `fund_${code}_${Date.now()}`
+      // [FIX] 缩短超时时间（3秒），天天基金接口经常超时，快速失败以便切换备用接口
       const timeout = setTimeout(() => {
         cleanup()
         const idx = pendingRequests.findIndex(r => r.code === code)
@@ -125,7 +126,7 @@ export function fetchFundEstimateFast(code: string): Promise<FundEstimate> {
         // [EDGE] 超时时使用持久化缓存
         if (persisted) resolve(persisted)
         else reject(new Error(`超时: ${code}`))
-      }, 8000)
+      }, 3000)
       
       pendingRequests.push({
         code,
@@ -264,27 +265,33 @@ export async function fetchNetValueHistoryFast(code: string, days = 30): Promise
   })
 }
 
+/** 基金基本信息类型 */
+export interface FundBasicInfo {
+  name: string
+  netValue: number
+  changeRate: number
+  updateTime: string
+  /** [FIX] #57 基金类型 */
+  fundType?: string
+}
+
 /**
  * 获取基金基本信息（备用方案）
  * [WHY] 当天天基金API超时时，使用东方财富API获取基金名称和净值
  * [WHAT] 使用东方财富的基金详情接口
  */
-export async function fetchFundBasicInfo(code: string): Promise<{
-  name: string
-  netValue: number
-  changeRate: number
-  updateTime: string
-} | null> {
+export async function fetchFundBasicInfo(code: string): Promise<FundBasicInfo | null> {
   const cacheKey = `basic_info_${code}`
-  const cached = cache.get<{ name: string; netValue: number; changeRate: number; updateTime: string }>(cacheKey)
+  const cached = cache.get<FundBasicInfo>(cacheKey)
   if (cached) return cached
   
   return new Promise((resolve) => {
     const callbackName = `fbinfo_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    // [FIX] 缩短超时时间（5秒）
     const timeout = setTimeout(() => {
       cleanup()
       resolve(null)
-    }, 8000)
+    }, 5000)
 
     ;(window as any)[callbackName] = (data: any) => {
       cleanup()
@@ -294,11 +301,31 @@ export async function fetchFundBasicInfo(code: string): Promise<{
       }
       
       const d = data.Datas
-      const result = {
+      // [FIX] #57 解析基金类型
+      const fundTypeCode = d.FTYPE || ''
+      let fundType = '混合型'
+      if (fundTypeCode.includes('股票') || fundTypeCode === '股票型') {
+        fundType = '股票型'
+      } else if (fundTypeCode.includes('债券') || fundTypeCode === '债券型') {
+        fundType = '债券型'
+      } else if (fundTypeCode.includes('指数') || fundTypeCode === '指数型') {
+        fundType = '指数型'
+      } else if (fundTypeCode.includes('货币') || fundTypeCode === '货币型') {
+        fundType = '货币型'
+      } else if (fundTypeCode.includes('QDII') || fundTypeCode === 'QDII') {
+        fundType = 'QDII'
+      } else if (fundTypeCode.includes('FOF') || fundTypeCode === 'FOF') {
+        fundType = 'FOF'
+      } else if (fundTypeCode.includes('混合') || fundTypeCode === '混合型') {
+        fundType = '混合型'
+      }
+      
+      const result: FundBasicInfo = {
         name: d.SHORTNAME || d.FSHORTNAME || '',
         netValue: parseFloat(d.DWJZ) || 0,
         changeRate: parseFloat(d.RZDF) || 0,
-        updateTime: d.FSRQ || ''
+        updateTime: d.FSRQ || '',
+        fundType
       }
       
       if (result.name) {
@@ -970,7 +997,7 @@ export async function fetchGlobalIndices(): Promise<GlobalIndex[]> {
                 results.push({
                   name: indices[idx].name,
                   code: indices[idx].code,
-                  price: item.f2 / 100,  // 价格需要除以100
+                  price: item.f2 / 100, // 价格需要除以100
                   change: item.f4 / 100, // 涨跌额
                   changePercent: item.f3 / 100, // 涨跌幅
                   region: indices[idx].region

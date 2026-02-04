@@ -1,17 +1,23 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import Components from 'unplugin-vue-components/vite'
+import AutoImport from 'unplugin-auto-import/vite'
 import { VantResolver } from '@vant/auto-import-resolver'
+import { VarletImportResolver } from '@varlet/import-resolver'
 import { fileURLToPath, URL } from 'node:url'
 
-// [WHY] 配置 Vite 构建工具，支持 Vue3 和 Vant 组件自动导入
-// [WHAT] 使用 unplugin-vue-components 自动导入 Vant 组件，无需手动 import
+// [WHY] 配置 Vite 构建工具，支持 Vue3、Vant 和 Varlet 组件自动导入
+// [WHAT] 使用 unplugin-vue-components 自动导入组件，无需手动 import
+// [NOTE] 迁移期间同时支持 Vant 和 Varlet
 export default defineConfig({
   plugins: [
     vue(),
-    // [HOW] VantResolver 会自动识别 Vant 组件并导入对应的样式
+    // [HOW] 同时支持 Vant 和 Varlet 的自动导入
     Components({
-      resolvers: [VantResolver()],
+      resolvers: [VantResolver(), VarletImportResolver()],
+    }),
+    AutoImport({
+      resolvers: [VarletImportResolver({ autoImport: true })],
     }),
   ],
   resolve: {

@@ -1,13 +1,16 @@
 <script setup lang="ts">
 // [WHY] 根组件，包含路由视图和底部导航
-// [WHAT] 使用 Vant Tabbar 实现底部导航切换
+// [WHAT] 使用 Varlet BottomNavigation 实现底部导航切换
 // [NOTE] 公告和更新检查已移至 Home.vue 中处理
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { showToast } from 'vant'
+import { Snackbar } from '@varlet/ui'
 
 // [WHAT] 水印文字
 const watermarkText = '开源软件基金宝'
+
+// [FIX] #50 记住用户上次访问的主页面
+const LAST_TAB_KEY = 'fund_app_last_tab'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,6 +21,14 @@ let lastBackTime = 0
 let backButtonHandler: ((e: any) => void) | null = null
 
 onMounted(() => {
+  // [FIX] #50 首次加载时跳转到上次保存的页面
+  const lastTabIndex = getLastTab()
+  const currentTab = tabs[lastTabIndex]
+  if (currentTab && route.path === '/' && lastTabIndex !== 2) {
+    // 如果当前在首页但上次访问的不是首页，则跳转
+    router.replace(currentTab.route)
+  }
+  
   // [WHAT] 仅在 Capacitor 原生环境下处理返回键
   // [WHY] Web 环境不需要处理
   const Capacitor = (window as any).Capacitor
@@ -45,7 +56,7 @@ onMounted(() => {
       plugins.App.exitApp()
     } else {
       lastBackTime = now
-      showToast('再按一次退出应用')
+      Snackbar('再按一次退出应用')
     }
   })
   
@@ -58,8 +69,33 @@ onUnmounted(() => {
   }
 })
 
-// [WHAT] 当前激活的 tab
-const activeTab = ref('home')
+// [WHAT] Tab配置
+const tabs = [
+  { name: 'holding', label: '持仓', icon: 'format-list-bulleted', route: '/holding' },
+  { name: 'market', label: '行情', icon: 'chart-line', route: '/market' },
+  { name: 'home', label: '自选', icon: 'home', route: '/' },
+  { name: 'analysis', label: '分析', icon: 'chart-bar', route: '/analysis' },
+  { name: 'announcement', label: '公告', icon: 'bell', route: '/announcement' }
+]
+
+// [FIX] #50 从本地存储恢复上次访问的主页面
+function getLastTab(): number {
+  try {
+    const saved = localStorage.getItem(LAST_TAB_KEY)
+    if (saved !== null) {
+      const index = parseInt(saved, 10)
+      if (index >= 0 && index < tabs.length) {
+        return index
+      }
+    }
+  } catch {
+    // 忽略错误
+  }
+  return 2 // 默认首页(home)在索引2
+}
+
+// [WHAT] 当前激活的 tab 索引
+const activeTab = ref(getLastTab())
 
 // [WHAT] 需要隐藏底部导航的页面
 const hiddenTabbarPages = ['search', 'detail', 'trades']
@@ -69,31 +105,25 @@ const showTabbar = computed(() => !hiddenTabbarPages.includes(route.name as stri
 watch(
   () => route.name,
   (name) => {
-    const tabMap: Record<string, string> = {
-      home: 'home',
-      market: 'market',
-      holding: 'holding',
-      analysis: 'analysis',
-      announcement: 'announcement'
-    }
-    if (name && tabMap[name as string]) {
-      activeTab.value = tabMap[name as string]
+    const tabIndex = tabs.findIndex(t => t.name === name)
+    if (tabIndex !== -1) {
+      activeTab.value = tabIndex
     }
   },
   { immediate: true }
 )
 
 // [WHAT] 切换 tab 时跳转路由
-function onTabChange(name: string | number) {
-  const routeMap: Record<string, string> = {
-    home: '/',
-    market: '/market',
-    holding: '/holding',
-    analysis: '/analysis',
-    announcement: '/announcement'
-  }
-  if (routeMap[name as string]) {
-    router.push(routeMap[name as string])
+function onTabChange(index: number) {
+  const tab = tabs[index]
+  if (tab) {
+    router.push(tab.route)
+    // [FIX] #50 保存当前 tab 到本地存储
+    try {
+      localStorage.setItem(LAST_TAB_KEY, String(index))
+    } catch {
+      // 忽略存储失败
+    }
   }
 }
 </script>
@@ -114,18 +144,20 @@ function onTabChange(name: string | number) {
       <router-view />
     </div>
 
-    <!-- 底部导航栏 -->
-    <van-tabbar
+    <!-- 底部导航栏 - 使用 Varlet BottomNavigation -->
+    <var-bottom-navigation
       v-if="showTabbar"
-      v-model="activeTab"
+      v-model:active="activeTab"
       @change="onTabChange"
+      safe-area
     >
-      <van-tabbar-item name="holding" icon="balance-list-o">持仓</van-tabbar-item>
-      <van-tabbar-item name="market" icon="chart-trending-o">行情</van-tabbar-item>
-      <van-tabbar-item name="home" icon="home-o">自选</van-tabbar-item>
-      <van-tabbar-item name="analysis" icon="bar-chart-o">分析</van-tabbar-item>
-      <van-tabbar-item name="announcement" icon="bullhorn-o">公告</van-tabbar-item>
-    </van-tabbar>
+      <var-bottom-navigation-item
+        v-for="(tab, index) in tabs"
+        :key="tab.name"
+        :label="tab.label"
+        :icon="tab.icon"
+      />
+    </var-bottom-navigation>
   </div>
 </template>
 
@@ -149,6 +181,13 @@ function onTabChange(name: string | number) {
   overflow: hidden;
   /* [WHY] 相对定位，让子页面可以使用绝对定位或百分比高度 */
   position: relative;
+}
+
+/* [WHY] Varlet 底部导航适配 */
+:deep(.var-bottom-navigation) {
+  --bottom-navigation-background: var(--bg-secondary);
+  --bottom-navigation-item-active-color: var(--color-primary);
+  border-top: 1px solid var(--border-color);
 }
 
 /* [WHY] 全局水印样式 */

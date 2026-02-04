@@ -1,7 +1,7 @@
 {
   "name": "fund-app",
   "private": true,
-  "version": "1.8.0",
+  "version": "1.9.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,6 +17,8 @@
     "@capacitor/android": "^7.4.5",
     "@capacitor/app": "^7.1.1",
     "@capacitor/core": "^7.0.0",
+    "@varlet/ui": "^3.5.0",
+    "@varlet/touch-emulator": "^3.5.0",
     "@vant/use": "^1.6.0",
     "lightweight-charts": "^5.1.0",
     "pinia": "^3.0.0",
@@ -29,6 +31,7 @@
     "@capacitor/cli": "^7.0.0",
     "@types/node": "^24.10.1",
     "@vant/auto-import-resolver": "^1.2.0",
+    "@varlet/import-resolver": "^3.5.0",
     "@vitejs/plugin-vue": "^6.0.1",
     "@vue/tsconfig": "^0.8.1",
     "typescript": "~5.9.3",

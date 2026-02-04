@@ -44,22 +44,28 @@ export const useHoldingStore = defineStore('holding', () => {
   // ========== Getters ==========
 
   /** 持仓汇总统计 */
+  // [FIX] #54 修复资产统计逻辑
   const summary = computed<HoldingSummary>(() => {
     let totalValue = 0
     let totalCost = 0
     let todayProfit = 0
 
     holdings.value.forEach((h) => {
-      if (h.marketValue !== undefined) {
+      // [FIX] #54 如果没有市值，使用持仓成本作为市值
+      if (h.marketValue !== undefined && h.marketValue > 0) {
         totalValue += h.marketValue
+      } else {
+        // 没有获取到估值时，使用买入金额作为当前市值
+        totalValue += h.amount
       }
       totalCost += h.amount // 持仓成本就是买入金额
-      if (h.todayProfit !== undefined) {
+      if (h.todayProfit !== undefined && !isNaN(h.todayProfit)) {
         todayProfit += h.todayProfit
       }
     })
 
     const totalProfit = totalValue - totalCost
+    // [FIX] #54 避免除零错误
     const totalProfitRate = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0
 
     return {
@@ -170,9 +176,13 @@ export const useHoldingStore = defineStore('holding', () => {
     const profitRate = holding.amount > 0 ? (profit / holding.amount) * 100 : 0
     
     // [WHAT] 计算当日收益
+    // [FIX] #45 增强涨幅数据验证
     let todayProfit = 0
-    if (data.dayChange !== 0) {
-      const prevNav = currentValue / (1 + data.dayChange / 100)
+    const dayChangePercent = typeof data.dayChange === 'number' && !isNaN(data.dayChange) ? data.dayChange : 0
+    
+    if (dayChangePercent !== 0 && Math.abs(dayChangePercent) < 20) {
+      // [FIX] #45 验证涨幅在合理范围内（-20% ~ +20%）
+      const prevNav = currentValue / (1 + dayChangePercent / 100)
       todayProfit = shares * (currentValue - prevNav)
       
       // C类扣除当日服务费
@@ -189,7 +199,8 @@ export const useHoldingStore = defineStore('holding', () => {
       marketValue,
       profit,
       profitRate,
-      todayChange: data.dayChange.toFixed(2),
+      // [FIX] #45 确保 todayChange 是有效数值
+      todayChange: dayChangePercent.toFixed(2),
       todayProfit,
       loading: false,
       shares,

@@ -19,6 +19,7 @@ const reportType = ref<'weekly' | 'monthly' | 'yearly'>('monthly')
 const reportCanvas = ref<HTMLCanvasElement | null>(null)
 
 // 报告数据
+// [FIX] #63 添加按类型分类的交易次数统计
 interface ReportData {
   period: string
   periodStart: string
@@ -30,34 +31,47 @@ interface ReportData {
   todayProfit: number
   holdingCount: number
   tradeCount: number
+  tradeCountByType: {
+    buy: number
+    sell: number
+    dividend: number
+    auto_invest: number
+  }
   buyAmount: number
   sellAmount: number
+  dividendAmount: number
   topHoldings: { name: string; value: number; profit: number; rate: number }[]
 }
 
 const reportData = ref<ReportData | null>(null)
 
 // [WHAT] 计算报告周期
+// [FIX] #61 修正周报时间范围（本周一到今天）
 function getReportPeriod(type: 'weekly' | 'monthly' | 'yearly'): { start: Date; end: Date; label: string } {
   const now = new Date()
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
   let start: Date
   let label: string
   
   switch (type) {
     case 'weekly':
+      // [FIX] #61 计算本周一的日期
       start = new Date(end)
-      start.setDate(start.getDate() - 7)
+      const dayOfWeek = start.getDay()
+      // 周日是0，需要特殊处理
+      const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+      start.setDate(start.getDate() - daysToMonday)
+      start.setHours(0, 0, 0, 0)
       label = '周报'
       break
     case 'monthly':
-      start = new Date(end)
-      start.setMonth(start.getMonth() - 1)
+      // 本月1号到今天
+      start = new Date(end.getFullYear(), end.getMonth(), 1, 0, 0, 0)
       label = '月报'
       break
     case 'yearly':
-      start = new Date(end)
-      start.setFullYear(start.getFullYear() - 1)
+      // 今年1月1日到今天
+      start = new Date(end.getFullYear(), 0, 1, 0, 0, 0)
       label = '年报'
       break
   }
@@ -71,6 +85,7 @@ function formatDate(date: Date): string {
 }
 
 // [WHAT] 生成报告数据
+// [FIX] #63 添加按类型分类的交易次数统计
 function generateReportData() {
   const { start, end, label } = getReportPeriod(reportType.value)
   
@@ -83,12 +98,34 @@ function generateReportData() {
     return tradeDate >= start && tradeDate <= end
   })
   
-  // 统计交易数据
+  // [FIX] #63 按类型统计交易数据
   let buyAmount = 0
   let sellAmount = 0
+  let dividendAmount = 0
+  const tradeCountByType = {
+    buy: 0,
+    sell: 0,
+    dividend: 0,
+    auto_invest: 0
+  }
+  
   trades.forEach(t => {
-    if (t.type === 'buy') buyAmount += t.amount
-    else if (t.type === 'sell') sellAmount += t.amount
+    // 统计次数
+    tradeCountByType[t.type]++
+    
+    // 统计金额
+    switch (t.type) {
+      case 'buy':
+      case 'auto_invest':
+        buyAmount += t.amount
+        break
+      case 'sell':
+        sellAmount += t.amount
+        break
+      case 'dividend':
+        dividendAmount += t.amount
+        break
+    }
   })
   
   // 获取持仓排名
@@ -114,8 +151,10 @@ function generateReportData() {
     todayProfit: summary.todayProfit,
     holdingCount: holdingStore.holdings.length,
     tradeCount: trades.length,
+    tradeCountByType,
     buyAmount,
     sellAmount,
+    dividendAmount,
     topHoldings
   }
 }
@@ -180,12 +219,13 @@ async function drawReport() {
   ctx.fillText(profitText, 40, 205)
   
   // 统计网格
+  // [FIX] #63 显示分类交易次数
   const statsY = 250
   const gridItems = [
     { label: '持仓数', value: `${data.holdingCount}只` },
-    { label: '交易次数', value: `${data.tradeCount}次` },
-    { label: '买入', value: `¥${formatMoney(data.buyAmount)}` },
-    { label: '卖出', value: `¥${formatMoney(data.sellAmount)}` }
+    { label: '买入/定投', value: `${data.tradeCountByType.buy + data.tradeCountByType.auto_invest}次` },
+    { label: '卖出', value: `${data.tradeCountByType.sell}次` },
+    { label: '分红', value: `${data.tradeCountByType.dividend}次` }
   ]
   
   const itemWidth = (w - 60) / 2
@@ -335,11 +375,25 @@ function switchType(type: 'weekly' | 'monthly' | 'yearly') {
 }
 
 // 初始化
+// [FIX] #59 确保初始化时正确获取数据
 onMounted(async () => {
-  await holdingStore.initHoldings()
-  generateReportData()
-  await nextTick()
-  drawReport()
+  try {
+    // 初始化持仓数据
+    await holdingStore.initHoldings()
+    
+    // 生成报告数据
+    generateReportData()
+    
+    // 确保 DOM 更新后再绘制
+    await nextTick()
+    
+    // 等待一帧确保 canvas 准备好
+    requestAnimationFrame(() => {
+      drawReport()
+    })
+  } catch (err) {
+    console.error('[Report] 初始化失败:', err)
+  }
 })
 </script>
 
@@ -448,12 +502,17 @@ onMounted(async () => {
 }
 
 /* 操作按钮 */
+/* [FIX] #60 修复底部按钮层级问题 */
 .action-bar {
   display: flex;
   gap: 12px;
   padding: 16px;
   background: var(--bg-secondary);
   padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
 }
 
 .action-bar .van-button {

@@ -98,14 +98,31 @@ async function generateReport() {
   }
 }
 
-// [WHAT] 刷新日报（每天限制一次）
+// [FIX] #58 右上角刷新逻辑优化
+const showRefreshConfirm = ref(false)
+
+// [WHAT] 刷新日报
 function refreshReport() {
-  // [WHY] 每天只能生成一次，节省API调用
+  if (isLoading.value) return
+  
+  // 如果今天已生成，弹出确认对话框
   if (alreadyGenerated.value) {
-    showToast('今日已生成，明天再来吧')
+    showRefreshConfirm.value = true
     return
   }
   generateReport()
+}
+
+// [FIX] #58 强制刷新
+function confirmRefresh() {
+  showRefreshConfirm.value = false
+  alreadyGenerated.value = false
+  generateReport()
+}
+
+// [FIX] #58 取消刷新
+function cancelRefresh() {
+  showRefreshConfirm.value = false
 }
 
 // [WHAT] 返回
@@ -219,6 +236,22 @@ function goBack() {
         </div>
       </template>
     </div>
+
+    <!-- [FIX] #58 刷新确认对话框 -->
+    <van-dialog
+      v-model:show="showRefreshConfirm"
+      title="重新生成日报"
+      show-cancel-button
+      confirm-button-text="确认刷新"
+      cancel-button-text="取消"
+      @confirm="confirmRefresh"
+      @cancel="cancelRefresh"
+    >
+      <div class="refresh-dialog-content">
+        <p>今日日报已生成过，确定要重新生成吗？</p>
+        <p class="dialog-tip">重新生成将覆盖当前日报内容</p>
+      </div>
+    </van-dialog>
   </div>
 </template>
 
@@ -366,5 +399,22 @@ function goBack() {
 .disclaimer .van-icon {
   flex-shrink: 0;
   margin-top: 2px;
+}
+
+/* [FIX] #58 刷新确认对话框 */
+.refresh-dialog-content {
+  padding: 16px;
+  text-align: center;
+}
+
+.refresh-dialog-content p {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.refresh-dialog-content .dialog-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 </style>

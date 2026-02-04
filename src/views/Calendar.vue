@@ -6,6 +6,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { showToast, showConfirmDialog } from 'vant'
+import { addToSystemCalendar } from '@/utils/native'
 
 const router = useRouter()
 const fundStore = useFundStore()
@@ -40,8 +41,9 @@ const EVENT_TYPES = {
 // 事件列表（持久化存储）
 const events = ref<CalendarEvent[]>(loadEvents())
 
-// 添加事件弹窗
+// 添加/编辑事件弹窗
 const showAddDialog = ref(false)
+const editingEventId = ref<string | null>(null)  // [FIX] #71 编辑模式标记
 const addForm = ref({
   date: selectedDate.value,
   fundCode: '',
@@ -49,6 +51,18 @@ const addForm = ref({
   type: 'dividend' as CalendarEvent['type'],
   title: '',
   description: ''
+})
+
+// [FIX] #72 日期范围限制：过去1年到未来2年
+const minDate = computed(() => {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() - 1)
+  return d.toISOString().split('T')[0]
+})
+const maxDate = computed(() => {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() + 2)
+  return d.toISOString().split('T')[0]
 })
 
 // 基金选择弹窗
@@ -181,7 +195,8 @@ function selectFund(item: { code: string; name: string }) {
   showFundPicker.value = false
 }
 
-// [WHAT] 提交添加事件
+// [WHAT] 提交添加/编辑事件
+// [FIX] #71 支持编辑模式
 function submitAdd() {
   if (!addForm.value.fundCode) {
     showToast('请选择基金')
@@ -192,21 +207,50 @@ function submitAdd() {
     return
   }
   
-  const newEvent: CalendarEvent = {
-    id: `event_${Date.now()}`,
-    date: addForm.value.date,
-    fundCode: addForm.value.fundCode,
-    fundName: addForm.value.fundName,
-    type: addForm.value.type,
-    title: addForm.value.title.trim(),
-    description: addForm.value.description.trim()
+  // [FIX] #72 验证日期范围
+  const selectedDateObj = new Date(addForm.value.date)
+  const minDateObj = new Date(minDate.value)
+  const maxDateObj = new Date(maxDate.value)
+  if (selectedDateObj < minDateObj || selectedDateObj > maxDateObj) {
+    showToast('请选择有效的日期范围（过去1年到未来2年）')
+    return
   }
   
-  events.value.push(newEvent)
-  saveEvents()
+  if (editingEventId.value) {
+    // [FIX] #71 编辑模式：更新现有事件
+    const index = events.value.findIndex(e => e.id === editingEventId.value)
+    if (index !== -1) {
+      events.value[index] = {
+        id: editingEventId.value,
+        date: addForm.value.date,
+        fundCode: addForm.value.fundCode,
+        fundName: addForm.value.fundName,
+        type: addForm.value.type,
+        title: addForm.value.title.trim(),
+        description: addForm.value.description.trim()
+      }
+      saveEvents()
+      showToast('修改成功')
+    }
+  } else {
+    // 添加模式：创建新事件
+    const newEvent: CalendarEvent = {
+      id: `event_${Date.now()}`,
+      date: addForm.value.date,
+      fundCode: addForm.value.fundCode,
+      fundName: addForm.value.fundName,
+      type: addForm.value.type,
+      title: addForm.value.title.trim(),
+      description: addForm.value.description.trim()
+    }
+    
+    events.value.push(newEvent)
+    saveEvents()
+    showToast('添加成功')
+  }
   
-  showToast('添加成功')
   showAddDialog.value = false
+  editingEventId.value = null
   
   // 重置表单
   addForm.value = {
@@ -217,6 +261,20 @@ function submitAdd() {
     title: '',
     description: ''
   }
+}
+
+// [FIX] #71 编辑事件
+function editEvent(event: CalendarEvent) {
+  editingEventId.value = event.id
+  addForm.value = {
+    date: event.date,
+    fundCode: event.fundCode,
+    fundName: event.fundName,
+    type: event.type,
+    title: event.title,
+    description: event.description || ''
+  }
+  showAddDialog.value = true
 }
 
 // [WHAT] 删除事件
@@ -243,6 +301,30 @@ function getEventType(type: CalendarEvent['type']) {
   return EVENT_TYPES[type]
 }
 
+// [FIX] #70 添加到系统日历
+async function addEventToSystemCalendar(event: CalendarEvent) {
+  try {
+    const eventDate = new Date(event.date)
+    eventDate.setHours(9, 0, 0, 0) // 默认设置为上午9点
+    
+    const success = await addToSystemCalendar({
+      title: `[${getEventType(event.type).label}] ${event.title}`,
+      notes: `基金: ${event.fundName}\n${event.description || ''}`,
+      startDate: eventDate,
+      allDay: true
+    })
+    
+    if (success) {
+      showToast('已添加到日历')
+    } else {
+      showToast('添加失败，请检查日历权限')
+    }
+  } catch (err) {
+    console.error('添加到日历失败:', err)
+    showToast('添加失败')
+  }
+}
+
 // 自选基金列表
 const watchlistOptions = computed(() => {
   return fundStore.watchlist.map(f => ({
@@ -253,7 +335,15 @@ const watchlistOptions = computed(() => {
 
 // 打开添加弹窗
 function openAddDialog() {
-  addForm.value.date = selectedDate.value
+  editingEventId.value = null  // 确保是添加模式
+  addForm.value = {
+    date: selectedDate.value,
+    fundCode: '',
+    fundName: '',
+    type: 'dividend',
+    title: '',
+    description: ''
+  }
   showAddDialog.value = true
 }
 
@@ -337,6 +427,20 @@ const weekDays = ['日', '一', '二', '三', '四', '五', '六']
             <div class="event-fund">{{ event.fundName }}</div>
             <div v-if="event.description" class="event-desc">{{ event.description }}</div>
           </div>
+          <!-- [FIX] #70 添加到系统日历 -->
+          <van-icon 
+            name="calendar-o" 
+            size="18" 
+            class="calendar-btn"
+            @click="addEventToSystemCalendar(event)"
+          />
+          <!-- [FIX] #71 添加编辑按钮 -->
+          <van-icon 
+            name="edit" 
+            size="18" 
+            class="edit-btn"
+            @click="editEvent(event)"
+          />
           <van-icon 
             name="delete-o" 
             size="18" 
@@ -356,7 +460,8 @@ const weekDays = ['日', '一', '二', '三', '四', '五', '六']
     >
       <div class="add-dialog">
         <div class="dialog-header">
-          <span class="dialog-title">添加事件</span>
+          <!-- [FIX] #71 根据模式显示不同标题 -->
+          <span class="dialog-title">{{ editingEventId ? '编辑事件' : '添加事件' }}</span>
           <van-icon name="cross" size="20" @click="showAddDialog = false" />
         </div>
         
@@ -364,10 +469,13 @@ const weekDays = ['日', '一', '二', '三', '四', '五', '六']
           <!-- 日期 -->
           <div class="field-item">
             <span class="field-label">日期</span>
+            <!-- [FIX] #72 添加日期范围限制 -->
             <input 
               v-model="addForm.date"
               type="date"
               class="date-input"
+              :min="minDate"
+              :max="maxDate"
             />
           </div>
           
@@ -647,9 +755,20 @@ const weekDays = ['日', '一', '二', '三', '四', '五', '六']
   margin-top: 4px;
 }
 
+.calendar-btn,
+.edit-btn,
 .delete-btn {
   color: var(--text-muted);
   cursor: pointer;
+  margin-left: 8px;
+}
+
+.calendar-btn:active {
+  color: var(--color-primary);
+}
+
+.edit-btn:active {
+  color: var(--color-primary);
 }
 
 .delete-btn:active {

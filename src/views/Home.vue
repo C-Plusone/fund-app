@@ -17,7 +17,7 @@ import {
   type RemoteConfig
 } from '@/api/remote'
 import { APP_VERSION } from '@/config/version'
-import { showConfirmDialog, showToast } from 'vant'
+import { Snackbar, Dialog } from '@varlet/ui'
 import FundCard from '@/components/FundCard.vue'
 
 const router = useRouter()
@@ -231,21 +231,19 @@ async function onRefresh() {
     loadGlobalIndices(),
     loadNews()
   ])
-  showToast('刷新成功')
+  Snackbar.success('刷新成功')
 }
 
 // [WHAT] 删除自选基金
 async function handleDelete(code: string) {
-  try {
-    await showConfirmDialog({
-      title: '确认删除',
-      message: '确定要从自选中删除该基金吗？'
-    })
-    fundStore.removeFund(code)
-    showToast('已删除')
-  } catch {
-    // 用户取消
-  }
+  Dialog({
+    title: '确认删除',
+    message: '确定要从自选中删除该基金吗？',
+    onConfirm: () => {
+      fundStore.removeFund(code)
+      Snackbar.success('已删除')
+    }
+  })
 }
 
 // [WHAT] 跳转到搜索页
@@ -264,7 +262,7 @@ function openNewsUrl() {
   if (currentNews.value?.url) {
     window.open(currentNews.value.url, '_blank')
   } else {
-    showToast('暂无详情链接')
+    Snackbar.warning('暂无详情链接')
   }
 }
 
@@ -298,7 +296,7 @@ function submitAlert() {
   if (!alertFund.value) return
   const threshold = parseFloat(alertForm.value.threshold)
   if (isNaN(threshold) || threshold <= 0) {
-    showToast('请输入有效的阈值')
+    Snackbar.warning('请输入有效的阈值')
     return
   }
 
@@ -310,7 +308,7 @@ function submitAlert() {
     enabled: true
   })
   
-  showToast('提醒已设置')
+  Snackbar.success('提醒已设置')
   showAlertDialog.value = false
 }
 </script>
@@ -435,12 +433,13 @@ function submitAlert() {
           <span>全球指数</span>
           <van-icon :name="showGlobalIndices ? 'arrow-up' : 'arrow-down'" size="14" />
         </div>
+        <!-- [FIX] #35 优化全球指数排版 -->
         <div class="global-grid" v-show="showGlobalIndices">
           <div 
             v-for="idx in globalIndices" 
             :key="idx.code" 
             class="global-item"
-            :class="idx.changePercent >= 0 ? 'up' : 'down'"
+            :class="idx.price > 0 ? (idx.changePercent >= 0 ? 'up' : 'down') : 'no-data'"
           >
             <div class="global-name">
               <span class="region-tag" :class="idx.region">{{ 
@@ -451,9 +450,14 @@ function submitAlert() {
               }}</span>
               {{ idx.name }}
             </div>
-            <div class="global-price">{{ idx.price > 1000 ? idx.price.toFixed(0) : idx.price.toFixed(2) }}</div>
-            <div class="global-change">
-              {{ idx.changePercent >= 0 ? '+' : '' }}{{ idx.changePercent.toFixed(2) }}%
+            <div class="global-values" v-if="idx.price > 0">
+              <div class="global-price">{{ idx.price > 1000 ? idx.price.toFixed(0) : idx.price.toFixed(2) }}</div>
+              <div class="global-change">
+                {{ idx.changePercent >= 0 ? '+' : '' }}{{ idx.changePercent.toFixed(2) }}%
+              </div>
+            </div>
+            <div class="global-values no-data-text" v-else>
+              <span>暂无数据</span>
             </div>
           </div>
         </div>
@@ -755,10 +759,11 @@ function submitAlert() {
   border-color: var(--color-primary);
 }
 
+/* [FIX] #52 右上角功能入口样式优化 */
 .header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex-shrink: 0;
 }
 
@@ -768,15 +773,16 @@ function submitAlert() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-tertiary);
+  background: var(--color-primary-light, rgba(25, 137, 250, 0.1));
   border-radius: var(--radius-sm);
-  color: var(--text-secondary);
+  color: var(--color-primary, #1989fa);
   transition: all 0.2s;
 }
 
 .header-right .van-icon:active {
-  background: var(--bg-active);
-  color: var(--color-primary);
+  background: var(--color-primary, #1989fa);
+  color: #fff;
+  transform: scale(0.95);
 }
 
 /* 公告栏 */
@@ -1038,33 +1044,38 @@ function submitAlert() {
   cursor: pointer;
 }
 
+/* [FIX] #35 优化全球指数排版 */
 .global-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
+  gap: 10px;
   margin-top: 12px;
 }
 
 .global-item {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
+  flex-direction: column;
+  padding: 12px;
   background: var(--bg-primary);
-  border-radius: 8px;
+  border-radius: 10px;
+  gap: 6px;
 }
 
 .global-name {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-primary);
   display: flex;
   align-items: center;
-  gap: 4px;
-  flex: 1;
-  min-width: 0;
+  gap: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.global-values {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .region-tag {
@@ -1102,6 +1113,19 @@ function submitAlert() {
 .global-item.down .global-price,
 .global-item.down .global-change {
   color: var(--color-down);
+}
+
+.global-item.no-data {
+  opacity: 0.6;
+}
+
+.global-values.no-data-text {
+  justify-content: center;
+}
+
+.global-values.no-data-text span {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .expand-hint {

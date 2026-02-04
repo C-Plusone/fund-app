@@ -50,6 +50,8 @@ export interface HoldingRecord {
   code: string
   /** 基金名称 */
   name: string
+  /** [FIX] #57 基金类型（如：混合型、股票型） */
+  fundType?: string
   /** 份额类型（A类/C类） */
   shareClass: FundShareClass
   /** 持有金额（元，实际投入的钱） */
@@ -181,6 +183,12 @@ export interface HoldingSummary {
 export type TradeType = 'buy' | 'sell' | 'dividend' | 'auto_invest'
 
 /**
+ * 交易状态类型
+ * [FIX] #64 定投交易状态
+ */
+export type TradeStatus = 'completed' | 'pending' | 'processing' | 'failed' | 'cancelled'
+
+/**
  * 交易记录
  * [WHAT] 记录每笔基金交易的详细信息
  */
@@ -207,6 +215,8 @@ export interface TradeRecord {
   remark?: string
   /** 创建时间 */
   createdAt: number
+  /** [FIX] #64 交易状态（主要用于定投） */
+  status?: TradeStatus
 }
 
 /**
@@ -217,6 +227,17 @@ export const TRADE_TYPE_CONFIG = {
   sell: { label: '卖出', color: '#1db82c' },
   dividend: { label: '分红', color: '#ff9800' },
   auto_invest: { label: '定投', color: '#1989fa' }
+} as const
+
+/**
+ * [FIX] #64 交易状态显示配置
+ */
+export const TRADE_STATUS_CONFIG = {
+  completed: { label: '已完成', color: '#67c23a', icon: 'success' },
+  pending: { label: '待执行', color: '#909399', icon: 'clock-o' },
+  processing: { label: '执行中', color: '#1989fa', icon: 'loading' },
+  failed: { label: '执行失败', color: '#f56c6c', icon: 'warning-o' },
+  cancelled: { label: '已取消', color: '#909399', icon: 'close' }
 } as const
 
 // ========== 大盘指数相关类型 ==========

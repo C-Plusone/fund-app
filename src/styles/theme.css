@@ -196,9 +196,10 @@ body {
   color: var(--text-primary) !important;
 }
 
-/* 导航栏适配 */
+/* 导航栏适配 - 与主背景保持一致 */
 .van-nav-bar {
-  background: var(--bg-secondary) !important;
+  background: var(--bg-primary) !important;
+  border-bottom: 1px solid var(--border-color) !important;
 }
 
 .van-nav-bar__title,
@@ -494,11 +495,20 @@ body {
   background: rgba(22, 27, 34, 0.9) !important;
 }
 
-/* 导航栏增强 */
-.van-nav-bar {
+/* 导航栏增强 - 深色主题 */
+[data-theme="dark"] .van-nav-bar {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  background: rgba(22, 27, 34, 0.95) !important;
+  background: rgba(13, 17, 23, 0.95) !important; /* --bg-primary 的半透明版本 */
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+/* 导航栏增强 - 浅色主题 */
+[data-theme="light"] .van-nav-bar {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  background: rgba(246, 248, 250, 0.95) !important; /* --bg-primary 的半透明版本 */
+  border-bottom: 1px solid var(--border-color) !important;
 }
 
 /* 按钮样式 */

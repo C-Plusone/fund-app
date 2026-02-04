@@ -429,7 +429,10 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
             <div class="col-name">
               <div class="fund-name">{{ holding.name || '加载中...' }}</div>
               <div class="fund-meta">
-                <span class="tag">已更新</span>
+                <!-- [FIX] #49, #46 根据实际状态显示更新标识 -->
+                <span v-if="holding.loading" class="tag loading">加载中</span>
+                <span v-else-if="holding.currentValue && holding.currentValue > 0" class="tag updated">已更新</span>
+                <span v-else class="tag pending">待更新</span>
                 <span class="amount">¥{{ formatMoney(holding.amount) }}</span>
               </div>
             </div>
@@ -869,12 +872,26 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
   gap: 8px;
 }
 
+/* [FIX] #49, #46 不同状态的标签样式 */
 .col-name .tag {
   font-size: 10px;
   padding: 1px 4px;
-  background: var(--color-primary-bg);
-  color: var(--color-primary);
   border-radius: 2px;
+}
+
+.col-name .tag.updated {
+  background: var(--color-primary-bg, rgba(25, 137, 250, 0.1));
+  color: var(--color-primary, #1989fa);
+}
+
+.col-name .tag.pending {
+  background: var(--color-warning-bg, rgba(255, 151, 106, 0.1));
+  color: var(--color-warning, #ff976a);
+}
+
+.col-name .tag.loading {
+  background: var(--bg-tertiary, #f7f8fa);
+  color: var(--text-secondary, #969799);
 }
 
 .col-name .amount {
@@ -1073,5 +1090,45 @@ function onDateConfirm({ selectedValues }: { selectedValues: string[] }) {
   font-size: 13px;
   color: var(--color-warning, #faad14);
   line-height: 1.5;
+}
+
+/* [FIX] 弹窗表单字体颜色优化，提高可读性 */
+.add-dialog :deep(.van-field__label),
+.cost-dialog :deep(.van-field__label) {
+  color: var(--text-primary) !important;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.add-dialog :deep(.van-field__control),
+.cost-dialog :deep(.van-field__control) {
+  color: var(--text-primary) !important;
+  font-size: 14px;
+  -webkit-text-fill-color: var(--text-primary) !important;
+}
+
+.add-dialog :deep(.van-field__control::placeholder),
+.cost-dialog :deep(.van-field__control::placeholder) {
+  color: var(--text-secondary) !important;
+  font-size: 14px;
+  opacity: 1;
+}
+
+/* 深色模式专用：确保颜色更亮更清晰 */
+:global([data-theme="dark"]) .add-dialog :deep(.van-field__label),
+:global([data-theme="dark"]) .cost-dialog :deep(.van-field__label) {
+  color: #f0f6fc !important;
+}
+
+:global([data-theme="dark"]) .add-dialog :deep(.van-field__control),
+:global([data-theme="dark"]) .cost-dialog :deep(.van-field__control) {
+  color: #f0f6fc !important;
+  -webkit-text-fill-color: #f0f6fc !important;
+}
+
+:global([data-theme="dark"]) .add-dialog :deep(.van-field__control::placeholder),
+:global([data-theme="dark"]) .cost-dialog :deep(.van-field__control::placeholder) {
+  color: #8b949e !important;
+  -webkit-text-fill-color: #8b949e !important;
 }
 </style>

@@ -6,6 +6,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { WatchlistItem, FundEstimate } from '@/types/fund'
 import { fetchFundEstimateFast, fetchFundAccurateData, fetchFundBasicInfo } from '@/api/fundFast'
+import { getFundNameFromList } from '@/api/fund'
 import {
   getWatchlist,
   saveWatchlist,
@@ -57,7 +58,6 @@ export const useFundStore = defineStore('fund', () => {
    */
   async function refreshEstimates() {
     if (watchlist.value.length === 0) {
-      // [EDGE] 没有自选时也需要重置刷新状态
       isRefreshing.value = false
       return
     }
@@ -66,72 +66,82 @@ export const useFundStore = defineStore('fund', () => {
     const codes = watchlist.value.map((item) => item.code)
     
     try {
-      // [WHAT] 并发请求所有基金估值（使用多源数据）
-      const results = await Promise.all(
-        codes.map(async code => {
-          try {
-            // [WHAT] 优先使用快速接口（天天基金）
-            const fastData = await fetchFundEstimateFast(code)
-            if (fastData && fastData.name) return { type: 'fast' as const, data: fastData }
-          } catch {
-            // 快速接口失败，尝试备用
-          }
+      // [WHAT] 并发请求所有基金估值
+      await Promise.all(
+        codes.map(async (code) => {
+          const item = watchlist.value.find((f) => f.code === code)
+          if (!item) return
           
+          let success = false
+          
+          // [FIX] 优先使用东方财富接口（更稳定），天天基金接口经常超时
+          // [WHAT] 尝试方法1：东方财富基本信息接口
           try {
-            // [WHAT] 备用1：使用东方财富基本信息接口
             const basicInfo = await fetchFundBasicInfo(code)
             if (basicInfo && basicInfo.name) {
-              return { 
-                type: 'basic' as const, 
-                data: {
-                  fundcode: code,
-                  name: basicInfo.name,
-                  gsz: String(basicInfo.netValue),
-                  gszzl: String(basicInfo.changeRate),
-                  gztime: basicInfo.updateTime,
-                  dwjz: String(basicInfo.netValue)
-                }
-              }
+              updateFundData(code, {
+                fundcode: code,
+                name: basicInfo.name,
+                gsz: String(basicInfo.netValue || 0),
+                gszzl: String(basicInfo.changeRate || 0),
+                gztime: basicInfo.updateTime || '',
+                dwjz: String(basicInfo.netValue || 0)
+              })
+              success = true
             }
           } catch {
-            // 备用1失败
+            // 继续尝试备用接口
           }
           
-          try {
-            // [WHAT] 备用2：使用多源精准数据
-            const accurateData = await fetchFundAccurateData(code)
-            if (accurateData && accurateData.name) return { type: 'accurate' as const, data: accurateData }
-          } catch {
-            // 备用2也失败
+          // [WHAT] 尝试方法2：天天基金快速接口（可能会超时）
+          if (!success) {
+            try {
+              const fastData = await fetchFundEstimateFast(code)
+              if (fastData && fastData.name) {
+                updateFundData(code, fastData)
+                success = true
+              }
+            } catch {
+              // 继续尝试备用接口
+            }
           }
           
-          return null
+          // [WHAT] 尝试方法3：多源精准数据
+          if (!success) {
+            try {
+              const accurateData = await fetchFundAccurateData(code)
+              if (accurateData && accurateData.name) {
+                updateFundData(code, {
+                  fundcode: accurateData.code,
+                  name: accurateData.name,
+                  gsz: String(accurateData.currentValue || 0),
+                  gszzl: String(accurateData.dayChange || 0),
+                  gztime: accurateData.updateTime || '',
+                  dwjz: String(accurateData.nav || 0)
+                })
+                success = true
+              }
+            } catch {
+              // 所有在线接口都失败
+            }
+          }
+          
+          // [FIX] 如果所有接口都失败，从本地列表获取名称
+          if (!success) {
+            item.loading = false
+            if (!item.name) {
+              const localName = await getFundNameFromList(code)
+              item.name = localName || '暂无数据'
+            }
+          }
         })
       )
       
-      // [WHAT] 更新每只基金的估值数据
-      results.forEach((result, index) => {
-        if (result) {
-          if (result.type === 'fast' || result.type === 'basic') {
-            updateFundData(codes[index], result.data)
-          } else if (result.type === 'accurate') {
-            // [WHAT] 从 accurate 数据构建兼容格式
-            const d = result.data
-            updateFundData(codes[index], {
-              fundcode: d.code,
-              name: d.name,
-              gsz: String(d.currentValue),
-              gszzl: String(d.dayChange),
-              gztime: d.updateTime,
-              dwjz: String(d.nav)
-            })
-          }
-        } else {
-          // [EDGE] 请求失败时保留原数据，但标记加载完成
-          const item = watchlist.value.find((f) => f.code === codes[index])
-          if (item) {
-            item.loading = false
-          }
+      // [FIX] 确保所有基金都标记为加载完成
+      watchlist.value.forEach(item => {
+        item.loading = false
+        if (!item.name) {
+          item.name = '暂无数据'
         }
       })
       
